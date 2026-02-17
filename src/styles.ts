@@ -46,7 +46,7 @@ export function getVideoStyle(): React.CSSProperties {
   return {
     width: "100%",
     height: "100%",
-    objectFit: "cover",
+    objectFit: "contain",
     display: "block",
   };
 }
@@ -360,10 +360,11 @@ export function getSpeedMenuItemStyle(
 }
 
 export function getTooltipStyle(x: number): React.CSSProperties {
+  const safeX = Math.min(Math.max(x, 5), 95);
   return {
     position: "absolute",
     bottom: "24px",
-    left: `${x}%`,
+    left: `${safeX}%`,
     transform: "translateX(-50%)",
     backgroundColor: "rgba(0,0,0,0.85)",
     color: "#fff",

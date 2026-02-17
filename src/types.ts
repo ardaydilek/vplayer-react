@@ -1,4 +1,4 @@
-import React from "react"
+import type { CSSProperties } from "react";
 export type VideoSource = "native" | "youtube" | "vimeo" | "bilibili";
 
 export interface VPlayerProps {
@@ -25,7 +25,7 @@ export interface VPlayerProps {
   /** Custom CSS class for the outer container */
   className?: string;
   /** Custom inline styles for the outer container */
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   /** Callback when the video starts playing */
   onPlay?: () => void;
   /** Callback when the video is paused */

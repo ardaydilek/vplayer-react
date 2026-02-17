@@ -82,6 +82,8 @@ export function VPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isPlayingRef = useRef(false);
+  const hasStartedRef = useRef(false);
 
   const parsed = parseVideoSource(src);
   const ratio = parseAspectRatio(aspectRatio);
@@ -115,18 +117,22 @@ export function VPlayer({
     setSupportsPip("pictureInPictureEnabled" in document);
   }, []);
 
+  // Keep refs in sync for use inside resetHideTimer
+  useEffect(() => { isPlayingRef.current = state.isPlaying; }, [state.isPlaying]);
+  useEffect(() => { hasStartedRef.current = state.hasStarted; }, [state.hasStarted]);
+
   // Auto-hide controls
   const resetHideTimer = useCallback(() => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     setState((s) => ({ ...s, showControls: true }));
-    if (state.isPlaying && state.hasStarted) {
+    if (isPlayingRef.current && hasStartedRef.current) {
       hideTimerRef.current = setTimeout(() => {
         setState((s) => ({ ...s, showControls: false }));
         setShowSpeedMenu(false);
         setShowVolumeSlider(false);
       }, HIDE_CONTROLS_DELAY);
     }
-  }, [state.isPlaying, state.hasStarted]);
+  }, []);
 
   // Fullscreen change listener
   useEffect(() => {
@@ -140,6 +146,20 @@ export function VPlayer({
     return () =>
       document.removeEventListener("fullscreenchange", handleFSChange);
   }, []);
+
+  // Reset player state when src changes
+  useEffect(() => {
+    setState((s) => ({
+      ...s,
+      currentTime: 0,
+      duration: 0,
+      hasStarted: false,
+      isPlaying: false,
+      buffered: 0,
+      isLoading: false,
+    }));
+    setEmbedStarted(false);
+  }, [src]);
 
   // ---- Native Video Event Handlers ----
   const handleLoadedMetadata = useCallback(() => {
@@ -190,7 +210,9 @@ export function VPlayer({
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) {
-      v.play();
+      v.play().catch(() => {
+        setState((s) => ({ ...s, isPlaying: false }));
+      });
       setState((s) => ({ ...s, isPlaying: true, hasStarted: true }));
       onPlay?.();
     } else {
@@ -208,7 +230,9 @@ export function VPlayer({
     }
     const v = videoRef.current;
     if (!v) return;
-    v.play();
+    v.play().catch(() => {
+      setState((s) => ({ ...s, isPlaying: false }));
+    });
     setState((s) => ({ ...s, isPlaying: true, hasStarted: true }));
     onPlay?.();
   }, [isNative, onPlay]);
@@ -434,7 +458,7 @@ export function VPlayer({
   }, [resetHideTimer]);
 
   const handleMouseLeave = useCallback(() => {
-    if (state.isPlaying) {
+    if (isPlayingRef.current) {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
       hideTimerRef.current = setTimeout(() => {
         setState((s) => ({ ...s, showControls: false }));
@@ -443,7 +467,7 @@ export function VPlayer({
       }, 800);
     }
     setHoverProgress(null);
-  }, [state.isPlaying]);
+  }, []);
 
   // Compute progress
   const progress =
@@ -467,7 +491,7 @@ export function VPlayer({
       className={className}
       style={{ ...getContainerStyle(width, state.isFocused), ...style }}
       tabIndex={0}
-      role="application"
+      role="region"
       aria-label={ariaLabel || `Video player${title ? `: ${title}` : ""}`}
       onFocus={handleFocus}
       onBlur={handleBlur}
@@ -486,6 +510,7 @@ export function VPlayer({
               poster={posterUrl}
               preload={preload}
               loop={loop}
+              autoPlay={autoPlay}
               muted={state.isMuted}
               playsInline
               style={getVideoStyle()}
