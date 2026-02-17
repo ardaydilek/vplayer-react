@@ -1,0 +1,58 @@
+{
+  "name": "vplayer-react",
+  "version": "1.0.0",
+  "description": "A lightweight, dependency-free React video player supporting local files, YouTube, Vimeo, and Bilibili.",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.cjs.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --external react --external react-dom",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "react",
+    "video",
+    "player",
+    "youtube",
+    "vimeo",
+    "bilibili",
+    "lightweight",
+    "dependency-free",
+    "accessible"
+  ],
+  "author": "Arda Kaan Aydilek <arda@hovr.dev>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ardaydilek/vplayer-react"
+  },
+  "homepage": "https://github.com/ardaydilek/vplayer-react#readme",
+  "bugs": {
+    "url": "https://github.com/ardaydilek/vplayer-react/issues"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "devDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0"
+  }
+}
