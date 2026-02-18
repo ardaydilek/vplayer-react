@@ -2099,6 +2099,25 @@ var VPlayerReact = (() => {
       }
     );
   }
+  function CCIcon({ size = 20, color = "#fff", style }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true", style, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "2", y: "5", width: "20", height: "14", rx: "2", stroke: color, strokeWidth: "1.5" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M7 12.5c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2", stroke: color, strokeWidth: "1.5", strokeLinecap: "round" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M13 12.5c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2", stroke: color, strokeWidth: "1.5", strokeLinecap: "round" })
+    ] });
+  }
+  function PrevIcon({ size = 20, color = "#fff", style }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true", style, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M19 5L9 12l10 7V5Z", fill: color }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "5", y: "5", width: "2", height: "14", rx: "1", fill: color })
+    ] });
+  }
+  function NextIcon({ size = 20, color = "#fff", style }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true", style, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M5 5l10 7-10 7V5Z", fill: color }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "17", y: "5", width: "2", height: "14", rx: "1", fill: color })
+    ] });
+  }
 
   // src/styles.ts
   function getContainerStyle(width, isFocused) {
@@ -2423,6 +2442,97 @@ var VPlayerReact = (() => {
       zIndex: 5
     };
   }
+  function getCCMenuStyle() {
+    return {
+      position: "absolute",
+      bottom: "48px",
+      right: "0",
+      backgroundColor: "rgba(20,20,20,0.95)",
+      borderRadius: "8px",
+      padding: "4px 0",
+      minWidth: "120px",
+      zIndex: 30,
+      backdropFilter: "blur(8px)",
+      WebkitBackdropFilter: "blur(8px)",
+      border: "1px solid rgba(255,255,255,0.1)"
+    };
+  }
+  function getShortcutsOverlayStyle() {
+    return {
+      position: "absolute",
+      inset: 0,
+      backgroundColor: "rgba(0,0,0,0.6)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 40
+    };
+  }
+  function getShortcutsBoxStyle() {
+    return {
+      backgroundColor: "rgba(20,20,20,0.97)",
+      borderRadius: "12px",
+      padding: "20px 24px",
+      minWidth: "280px",
+      border: "1px solid rgba(255,255,255,0.1)",
+      backdropFilter: "blur(12px)",
+      WebkitBackdropFilter: "blur(12px)",
+      color: "#fff"
+    };
+  }
+  function getShortcutRowStyle() {
+    return {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "5px 0",
+      gap: "16px"
+    };
+  }
+  function getKbdStyle() {
+    return {
+      fontFamily: "monospace",
+      fontSize: "12px",
+      backgroundColor: "rgba(255,255,255,0.1)",
+      border: "1px solid rgba(255,255,255,0.2)",
+      borderRadius: "4px",
+      padding: "2px 6px",
+      color: "#fff",
+      whiteSpace: "nowrap"
+    };
+  }
+  function getChapterMarkerStyle(pct) {
+    return {
+      position: "absolute",
+      left: `${pct}%`,
+      top: 0,
+      bottom: 0,
+      width: "2px",
+      backgroundColor: "rgba(255,255,255,0.5)",
+      transform: "translateX(-50%)",
+      pointerEvents: "none",
+      zIndex: 3
+    };
+  }
+  function getPreviewThumbnailStyle(x, thumb, frameIndex) {
+    const safeX = Math.min(Math.max(x, 5), 95);
+    return {
+      position: "absolute",
+      bottom: "52px",
+      left: `${safeX}%`,
+      transform: "translateX(-50%)",
+      width: `${thumb.width}px`,
+      height: `${thumb.height}px`,
+      backgroundImage: `url(${thumb.src})`,
+      backgroundPosition: `-${frameIndex * thumb.width}px 0`,
+      backgroundSize: `${thumb.width * thumb.count}px ${thumb.height}px`,
+      backgroundRepeat: "no-repeat",
+      borderRadius: "4px",
+      border: "2px solid rgba(255,255,255,0.3)",
+      pointerEvents: "none",
+      zIndex: 5
+    };
+  }
   var injected = false;
   function injectKeyframes() {
     if (injected || typeof document === "undefined") return;
@@ -2442,6 +2552,32 @@ var VPlayerReact = (() => {
   var DEFAULT_POSTER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1920' height='1080' viewBox='0 0 1920 1080'%3E%3Crect fill='%23111' width='1920' height='1080'/%3E%3Ctext x='50%25' y='50%25' dominantBaseline='central' textAnchor='middle' fontFamily='system-ui' fontSize='48' fill='%23333'%3EVideo%3C/text%3E%3C/svg%3E";
   var PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
   var HIDE_CONTROLS_DELAY = 3e3;
+  var SHORTCUTS = [
+    ["Space / K", "Play / Pause"],
+    ["\u2190 / \u2192", "Seek \xB15s"],
+    ["\u2191 / \u2193", "Volume \xB110%"],
+    ["F", "Fullscreen"],
+    ["M", "Mute"],
+    ["0\u20139", "Seek to 0%\u201390%"],
+    ["< / >", "Speed down / up"],
+    ["?", "Toggle shortcuts"]
+  ];
+  var DEFAULT_KEYMAP = {
+    play: [" ", "k"],
+    mute: "m",
+    fullscreen: "f",
+    seekBack: "ArrowLeft",
+    seekForward: "ArrowRight",
+    volumeUp: "ArrowUp",
+    volumeDown: "ArrowDown",
+    speedDown: "<",
+    speedUp: ">",
+    shortcuts: "?"
+  };
+  function matchesKey(key, binding) {
+    if (!binding) return false;
+    return Array.isArray(binding) ? binding.includes(key) : binding === key;
+  }
   function VPlayer({
     src,
     poster,
@@ -2460,17 +2596,35 @@ var VPlayerReact = (() => {
     onEnded,
     onTimeUpdate,
     preload = "metadata",
-    ariaLabel
+    ariaLabel,
+    tracks,
+    onBuffer,
+    chapters,
+    previewThumbnails,
+    onMilestone,
+    onNext,
+    onPrev,
+    keymap
   }) {
+    const srcList = Array.isArray(src) ? src : [src];
+    const isPlaylist = srcList.length > 1;
+    const [currentIndex, setCurrentIndex] = (0, import_react.useState)(0);
+    const activeSrc = srcList[currentIndex] ?? srcList[0];
     const containerRef = (0, import_react.useRef)(null);
     const videoRef = (0, import_react.useRef)(null);
     const progressRef = (0, import_react.useRef)(null);
     const hideTimerRef = (0, import_react.useRef)(null);
     const isPlayingRef = (0, import_react.useRef)(false);
     const hasStartedRef = (0, import_react.useRef)(false);
-    const parsed = parseVideoSource(src);
+    const milestonesFiredRef = (0, import_react.useRef)(/* @__PURE__ */ new Set());
+    const playlistAdvancingRef = (0, import_react.useRef)(false);
+    const parsed = parseVideoSource(activeSrc);
     const ratio = parseAspectRatio(aspectRatio);
     const isNative = parsed.type === "native";
+    const resolvedKeymap = (0, import_react.useMemo)(
+      () => ({ ...DEFAULT_KEYMAP, ...keymap }),
+      [keymap]
+    );
     const [state, setState] = (0, import_react.useState)({
       isPlaying: false,
       currentTime: 0,
@@ -2487,10 +2641,13 @@ var VPlayerReact = (() => {
     });
     const [showSpeedMenu, setShowSpeedMenu] = (0, import_react.useState)(false);
     const [showVolumeSlider, setShowVolumeSlider] = (0, import_react.useState)(false);
+    const [showCCMenu, setShowCCMenu] = (0, import_react.useState)(false);
+    const [showShortcuts, setShowShortcuts] = (0, import_react.useState)(false);
     const [hoverProgress, setHoverProgress] = (0, import_react.useState)(null);
     const [isDragging, setIsDragging] = (0, import_react.useState)(false);
     const [embedStarted, setEmbedStarted] = (0, import_react.useState)(false);
     const [supportsPip, setSupportsPip] = (0, import_react.useState)(false);
+    const [activeTrack, setActiveTrack] = (0, import_react.useState)(null);
     (0, import_react.useEffect)(() => {
       injectKeyframes();
       setSupportsPip("pictureInPictureEnabled" in document);
@@ -2532,8 +2689,32 @@ var VPlayerReact = (() => {
         buffered: 0,
         isLoading: false
       }));
+      milestonesFiredRef.current = /* @__PURE__ */ new Set();
       setEmbedStarted(false);
-    }, [src]);
+      if (playlistAdvancingRef.current) {
+        playlistAdvancingRef.current = false;
+        const v = videoRef.current;
+        if (v) {
+          setState((s) => ({ ...s, hasStarted: true, isLoading: true }));
+          const attemptPlay = () => {
+            v.play().then(
+              () => setState((s) => ({ ...s, isPlaying: true, isLoading: false }))
+            ).catch(() => setState((s) => ({ ...s, isPlaying: false })));
+          };
+          v.addEventListener("canplay", attemptPlay, { once: true });
+          return () => {
+            v.removeEventListener("canplay", attemptPlay);
+          };
+        }
+      }
+    }, [activeSrc]);
+    (0, import_react.useEffect)(() => {
+      const v = videoRef.current;
+      if (!v || !tracks?.length) return;
+      Array.from(v.textTracks).forEach((track, i) => {
+        track.mode = i === activeTrack ? "showing" : "hidden";
+      });
+    }, [activeTrack, tracks]);
     const handleLoadedMetadata = (0, import_react.useCallback)(() => {
       const v = videoRef.current;
       if (!v) return;
@@ -2551,16 +2732,24 @@ var VPlayerReact = (() => {
         currentTime: v.currentTime
       }));
       onTimeUpdate?.(v.currentTime, v.duration);
-    }, [onTimeUpdate]);
+      if (onMilestone && v.duration > 0) {
+        const pct = v.currentTime / v.duration * 100;
+        for (const milestone of [25, 50, 75, 100]) {
+          if (pct >= milestone && !milestonesFiredRef.current.has(milestone)) {
+            milestonesFiredRef.current.add(milestone);
+            onMilestone(milestone);
+          }
+        }
+      }
+    }, [onTimeUpdate, onMilestone]);
     const handleProgress = (0, import_react.useCallback)(() => {
       const v = videoRef.current;
       if (!v || v.buffered.length === 0) return;
       const end = v.buffered.end(v.buffered.length - 1);
-      setState((s) => ({
-        ...s,
-        buffered: v.duration ? end / v.duration * 100 : 0
-      }));
-    }, []);
+      const pct = v.duration ? end / v.duration * 100 : 0;
+      setState((s) => ({ ...s, buffered: pct }));
+      onBuffer?.(pct);
+    }, [onBuffer]);
     const handleWaiting = (0, import_react.useCallback)(() => {
       setState((s) => ({ ...s, isLoading: true }));
     }, []);
@@ -2568,9 +2757,15 @@ var VPlayerReact = (() => {
       setState((s) => ({ ...s, isLoading: false }));
     }, []);
     const handleVideoEnded = (0, import_react.useCallback)(() => {
-      setState((s) => ({ ...s, isPlaying: false, showControls: true }));
-      onEnded?.();
-    }, [onEnded]);
+      if (isPlaylist && currentIndex < srcList.length - 1) {
+        playlistAdvancingRef.current = true;
+        setCurrentIndex((i) => i + 1);
+        onNext?.();
+      } else {
+        setState((s) => ({ ...s, isPlaying: false, showControls: true }));
+        onEnded?.();
+      }
+    }, [isPlaylist, currentIndex, srcList.length, onNext, onEnded]);
     const togglePlay = (0, import_react.useCallback)(() => {
       const v = videoRef.current;
       if (!v) return;
@@ -2632,6 +2827,31 @@ var VPlayerReact = (() => {
         };
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
+      },
+      []
+    );
+    const handleProgressTouchStart = (0, import_react.useCallback)(
+      (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+        const v = videoRef.current;
+        const bar = progressRef.current;
+        if (!v || !bar) return;
+        const rect = bar.getBoundingClientRect();
+        const onMove = (ev) => {
+          const touch = ev.touches[0];
+          if (!touch) return;
+          const pct = clamp((touch.clientX - rect.left) / rect.width, 0, 1);
+          v.currentTime = pct * v.duration;
+          setState((s) => ({ ...s, currentTime: v.currentTime }));
+        };
+        const onEnd = () => {
+          setIsDragging(false);
+          window.removeEventListener("touchmove", onMove);
+          window.removeEventListener("touchend", onEnd);
+        };
+        window.addEventListener("touchmove", onMove, { passive: false });
+        window.addEventListener("touchend", onEnd);
       },
       []
     );
@@ -2710,75 +2930,51 @@ var VPlayerReact = (() => {
         if (!state.isFocused || !isNative) return;
         const v = videoRef.current;
         if (!v) return;
-        switch (e.key) {
-          case " ":
-          case "k":
-            e.preventDefault();
-            togglePlay();
-            break;
-          case "ArrowLeft":
-            e.preventDefault();
-            v.currentTime = Math.max(0, v.currentTime - 5);
-            break;
-          case "ArrowRight":
-            e.preventDefault();
-            v.currentTime = Math.min(v.duration, v.currentTime + 5);
-            break;
-          case "ArrowUp":
-            e.preventDefault();
-            v.volume = clamp(v.volume + 0.1, 0, 1);
-            setState((s) => ({ ...s, volume: v.volume, isMuted: false }));
-            v.muted = false;
-            break;
-          case "ArrowDown":
-            e.preventDefault();
-            v.volume = clamp(v.volume - 0.1, 0, 1);
-            setState((s) => ({
-              ...s,
-              volume: v.volume,
-              isMuted: v.volume === 0
-            }));
-            break;
-          case "f":
-            e.preventDefault();
-            toggleFullscreen();
-            break;
-          case "m":
-            e.preventDefault();
-            toggleMute();
-            break;
-          case "0":
-          case "1":
-          case "2":
-          case "3":
-          case "4":
-          case "5":
-          case "6":
-          case "7":
-          case "8":
-          case "9": {
-            e.preventDefault();
-            const pct = parseInt(e.key) / 10;
-            v.currentTime = pct * v.duration;
-            break;
-          }
-          case "<":
-            e.preventDefault();
-            {
-              const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
-              if (idx > 0) setPlaybackRate(PLAYBACK_RATES[idx - 1]);
-            }
-            break;
-          case ">":
-            e.preventDefault();
-            {
-              const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
-              if (idx < PLAYBACK_RATES.length - 1)
-                setPlaybackRate(PLAYBACK_RATES[idx + 1]);
-            }
-            break;
-          default:
-            break;
+        if (matchesKey(e.key, resolvedKeymap.play)) {
+          e.preventDefault();
+          togglePlay();
+        } else if (matchesKey(e.key, resolvedKeymap.seekBack)) {
+          e.preventDefault();
+          v.currentTime = Math.max(0, v.currentTime - 5);
+        } else if (matchesKey(e.key, resolvedKeymap.seekForward)) {
+          e.preventDefault();
+          v.currentTime = Math.min(v.duration, v.currentTime + 5);
+        } else if (matchesKey(e.key, resolvedKeymap.volumeUp)) {
+          e.preventDefault();
+          v.volume = clamp(v.volume + 0.1, 0, 1);
+          setState((s) => ({ ...s, volume: v.volume, isMuted: false }));
+          v.muted = false;
+        } else if (matchesKey(e.key, resolvedKeymap.volumeDown)) {
+          e.preventDefault();
+          v.volume = clamp(v.volume - 0.1, 0, 1);
+          setState((s) => ({ ...s, volume: v.volume, isMuted: v.volume === 0 }));
+        } else if (matchesKey(e.key, resolvedKeymap.fullscreen)) {
+          e.preventDefault();
+          toggleFullscreen();
+        } else if (matchesKey(e.key, resolvedKeymap.mute)) {
+          e.preventDefault();
+          toggleMute();
+        } else if (matchesKey(e.key, resolvedKeymap.speedDown)) {
+          e.preventDefault();
+          const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
+          if (idx > 0) setPlaybackRate(PLAYBACK_RATES[idx - 1]);
+        } else if (matchesKey(e.key, resolvedKeymap.speedUp)) {
+          e.preventDefault();
+          const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
+          if (idx < PLAYBACK_RATES.length - 1)
+            setPlaybackRate(PLAYBACK_RATES[idx + 1]);
+        } else if (matchesKey(e.key, resolvedKeymap.shortcuts)) {
+          e.preventDefault();
+          setShowShortcuts((prev) => !prev);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setShowShortcuts(false);
+          setShowSpeedMenu(false);
+          setShowCCMenu(false);
+        } else if (/^[0-9]$/.test(e.key)) {
+          e.preventDefault();
+          const pct = parseInt(e.key) / 10;
+          v.currentTime = pct * v.duration;
         }
         resetHideTimer();
       },
@@ -2786,6 +2982,7 @@ var VPlayerReact = (() => {
         state.isFocused,
         state.playbackRate,
         isNative,
+        resolvedKeymap,
         togglePlay,
         toggleFullscreen,
         toggleMute,
@@ -2808,9 +3005,16 @@ var VPlayerReact = (() => {
       setHoverProgress(null);
     }, []);
     const progress = state.duration > 0 ? state.currentTime / state.duration * 100 : 0;
+    const thumbFrame = previewThumbnails && hoverProgress !== null ? Math.min(
+      Math.floor(hoverProgress / 100 * previewThumbnails.count),
+      previewThumbnails.count - 1
+    ) : null;
+    const nearChapter = chapters && hoverProgress !== null ? chapters.find(
+      (ch) => state.duration > 0 && Math.abs(ch.time / state.duration * 100 - hoverProgress) < 2
+    ) : void 0;
     const posterUrl = poster || DEFAULT_POSTER;
     const showPoster = !state.hasStarted;
-    const controlsVisible = state.showControls || !state.isPlaying || isDragging || showSpeedMenu;
+    const controlsVisible = state.showControls || !state.isPlaying || isDragging || showSpeedMenu || showCCMenu;
     const VolumeIcon = state.isMuted ? VolumeMuteIcon : state.volume < 0.5 ? VolumeLowIcon : VolumeHighIcon;
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       "div",
@@ -2826,6 +3030,7 @@ var VPlayerReact = (() => {
         onKeyDown: handleKeyDown,
         onMouseMove: handleMouseMove,
         onMouseLeave: handleMouseLeave,
+        onTouchStart: handleMouseMove,
         children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getAspectBoxStyle(ratio), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getInnerStyle(), children: [
           isNative && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "video",
@@ -2846,7 +3051,18 @@ var VPlayerReact = (() => {
               onCanPlay: handleCanPlay,
               onEnded: handleVideoEnded,
               onClick: togglePlay,
-              "aria-hidden": "true"
+              "aria-hidden": "true",
+              children: tracks?.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                "track",
+                {
+                  kind: "subtitles",
+                  src: t.src,
+                  srcLang: t.lang,
+                  label: t.label,
+                  default: t.default
+                },
+                i
+              ))
             }
           ),
           !isNative && embedStarted && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -2890,6 +3106,46 @@ var VPlayerReact = (() => {
           ),
           state.isLoading && state.hasStarted && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getLoadingOverlayStyle(), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SpinnerIcon, { size: 40, color: iconColor }) }),
           title && state.hasStarted && controlsVisible && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getTitleOverlayStyle(), children: title }),
+          showShortcuts && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "div",
+            {
+              style: getShortcutsOverlayStyle(),
+              onClick: () => setShowShortcuts(false),
+              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                "div",
+                {
+                  style: getShortcutsBoxStyle(),
+                  onClick: (e) => e.stopPropagation(),
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "div",
+                      {
+                        style: {
+                          fontWeight: 600,
+                          marginBottom: "12px",
+                          fontSize: "14px"
+                        },
+                        children: "Keyboard Shortcuts"
+                      }
+                    ),
+                    SHORTCUTS.map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getShortcutRowStyle(), children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("kbd", { style: getKbdStyle(), children: key }),
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                        "span",
+                        {
+                          style: {
+                            color: "rgba(255,255,255,0.75)",
+                            fontSize: "13px"
+                          },
+                          children: label
+                        }
+                      )
+                    ] }, key))
+                  ]
+                }
+              )
+            }
+          ),
           isNative && state.hasStarted && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlsBarStyle(controlsVisible), children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
               "div",
@@ -2898,6 +3154,7 @@ var VPlayerReact = (() => {
                 style: getProgressContainerStyle(),
                 onClick: handleProgressClick,
                 onMouseDown: handleProgressMouseDown,
+                onTouchStart: handleProgressTouchStart,
                 onMouseMove: handleProgressHover,
                 onMouseLeave: () => setHoverProgress(null),
                 role: "slider",
@@ -2922,7 +3179,16 @@ var VPlayerReact = (() => {
                           {
                             style: getProgressFillStyle(progress, accentColor)
                           }
-                        )
+                        ),
+                        chapters && state.duration > 0 && chapters.map((ch, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                          "div",
+                          {
+                            style: getChapterMarkerStyle(
+                              ch.time / state.duration * 100
+                            )
+                          },
+                          i
+                        ))
                       ]
                     }
                   ),
@@ -2936,7 +3202,17 @@ var VPlayerReact = (() => {
                       )
                     }
                   ),
-                  hoverProgress !== null && state.duration > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getTooltipStyle(hoverProgress), children: formatTime(hoverProgress / 100 * state.duration) })
+                  thumbFrame !== null && previewThumbnails && hoverProgress !== null && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                    "div",
+                    {
+                      style: getPreviewThumbnailStyle(
+                        hoverProgress,
+                        previewThumbnails,
+                        thumbFrame
+                      )
+                    }
+                  ),
+                  hoverProgress !== null && state.duration > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getTooltipStyle(hoverProgress), children: nearChapter?.label ?? formatTime(hoverProgress / 100 * state.duration) })
                 ]
               }
             ),
@@ -2958,6 +3234,34 @@ var VPlayerReact = (() => {
                     children: state.isPlaying ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PauseIcon, { size: 20, color: iconColor }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PlayIcon, { size: 20, color: iconColor })
                   }
                 ),
+                isPlaylist && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+                  currentIndex > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                    "button",
+                    {
+                      type: "button",
+                      style: getControlButtonStyle(),
+                      onClick: () => {
+                        setCurrentIndex((i) => i - 1);
+                        onPrev?.();
+                      },
+                      "aria-label": "Previous",
+                      children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PrevIcon, { size: 18, color: iconColor })
+                    }
+                  ),
+                  currentIndex < srcList.length - 1 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                    "button",
+                    {
+                      type: "button",
+                      style: getControlButtonStyle(),
+                      onClick: () => {
+                        setCurrentIndex((i) => i + 1);
+                        onNext?.();
+                      },
+                      "aria-label": "Next",
+                      children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(NextIcon, { size: 18, color: iconColor })
+                    }
+                  )
+                ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
                   "div",
                   {
@@ -3026,6 +3330,58 @@ var VPlayerReact = (() => {
                 ] })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlGroupStyle(), children: [
+                tracks && tracks.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { position: "relative" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                    "button",
+                    {
+                      type: "button",
+                      style: getControlButtonStyle(),
+                      onClick: () => setShowCCMenu(!showCCMenu),
+                      "aria-label": "Captions",
+                      "aria-expanded": showCCMenu,
+                      children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                        CCIcon,
+                        {
+                          size: 18,
+                          color: activeTrack !== null ? accentColor : iconColor
+                        }
+                      )
+                    }
+                  ),
+                  showCCMenu && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getCCMenuStyle(), children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        style: getSpeedMenuItemStyle(
+                          activeTrack === null,
+                          accentColor
+                        ),
+                        onClick: () => {
+                          setActiveTrack(null);
+                          setShowCCMenu(false);
+                        },
+                        children: "Off"
+                      }
+                    ),
+                    tracks.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        style: getSpeedMenuItemStyle(
+                          activeTrack === i,
+                          accentColor
+                        ),
+                        onClick: () => {
+                          setActiveTrack(i);
+                          setShowCCMenu(false);
+                        },
+                        children: t.label
+                      },
+                      i
+                    ))
+                  ] })
+                ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { position: "relative" }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                     "button",

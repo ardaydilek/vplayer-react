@@ -5,9 +5,10 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { VPlayerProps, VideoState } from "./types";
+import type { VPlayerProps, VideoState, VPlayerAction } from "./types";
 import { parseVideoSource, formatTime, clamp, parseAspectRatio } from "./utils";
 import {
   PlayIcon,
@@ -20,6 +21,9 @@ import {
   SettingsIcon,
   PipIcon,
   SpinnerIcon,
+  CCIcon,
+  PrevIcon,
+  NextIcon,
 } from "./icons";
 import {
   getContainerStyle,
@@ -49,6 +53,13 @@ import {
   getSpeedMenuStyle,
   getSpeedMenuItemStyle,
   getTooltipStyle,
+  getCCMenuStyle,
+  getShortcutsOverlayStyle,
+  getShortcutsBoxStyle,
+  getShortcutRowStyle,
+  getKbdStyle,
+  getChapterMarkerStyle,
+  getPreviewThumbnailStyle,
   injectKeyframes,
 } from "./styles";
 
@@ -57,6 +68,38 @@ const DEFAULT_POSTER =
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const HIDE_CONTROLS_DELAY = 3000;
+
+const SHORTCUTS: [string, string][] = [
+  ["Space / K", "Play / Pause"],
+  ["← / →", "Seek ±5s"],
+  ["↑ / ↓", "Volume ±10%"],
+  ["F", "Fullscreen"],
+  ["M", "Mute"],
+  ["0–9", "Seek to 0%–90%"],
+  ["< / >", "Speed down / up"],
+  ["?", "Toggle shortcuts"],
+];
+
+const DEFAULT_KEYMAP: Record<VPlayerAction, string | string[]> = {
+  play:        [" ", "k"],
+  mute:        "m",
+  fullscreen:  "f",
+  seekBack:    "ArrowLeft",
+  seekForward: "ArrowRight",
+  volumeUp:    "ArrowUp",
+  volumeDown:  "ArrowDown",
+  speedDown:   "<",
+  speedUp:     ">",
+  shortcuts:   "?",
+};
+
+function matchesKey(
+  key: string,
+  binding: string | string[] | false | undefined
+): boolean {
+  if (!binding) return false;
+  return Array.isArray(binding) ? binding.includes(key) : binding === key;
+}
 
 export function VPlayer({
   src,
@@ -77,17 +120,38 @@ export function VPlayer({
   onTimeUpdate,
   preload = "metadata",
   ariaLabel,
+  tracks,
+  onBuffer,
+  chapters,
+  previewThumbnails,
+  onMilestone,
+  onNext,
+  onPrev,
+  keymap,
 }: VPlayerProps) {
+  // ---- Playlist resolution ----
+  const srcList = Array.isArray(src) ? src : [src];
+  const isPlaylist = srcList.length > 1;
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const activeSrc = srcList[currentIndex] ?? srcList[0];
+
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPlayingRef = useRef(false);
   const hasStartedRef = useRef(false);
+  const milestonesFiredRef = useRef<Set<number>>(new Set());
+  const playlistAdvancingRef = useRef(false);
 
-  const parsed = parseVideoSource(src);
+  const parsed = parseVideoSource(activeSrc);
   const ratio = parseAspectRatio(aspectRatio);
   const isNative = parsed.type === "native";
+
+  const resolvedKeymap = useMemo(
+    () => ({ ...DEFAULT_KEYMAP, ...keymap }),
+    [keymap]
+  );
 
   const [state, setState] = useState<VideoState>({
     isPlaying: false,
@@ -106,10 +170,13 @@ export function VPlayer({
 
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+  const [showCCMenu, setShowCCMenu] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [hoverProgress, setHoverProgress] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [embedStarted, setEmbedStarted] = useState(false);
   const [supportsPip, setSupportsPip] = useState(false);
+  const [activeTrack, setActiveTrack] = useState<number | null>(null);
 
   // Inject keyframes for spinner & detect PiP support
   useEffect(() => {
@@ -118,8 +185,12 @@ export function VPlayer({
   }, []);
 
   // Keep refs in sync for use inside resetHideTimer
-  useEffect(() => { isPlayingRef.current = state.isPlaying; }, [state.isPlaying]);
-  useEffect(() => { hasStartedRef.current = state.hasStarted; }, [state.hasStarted]);
+  useEffect(() => {
+    isPlayingRef.current = state.isPlaying;
+  }, [state.isPlaying]);
+  useEffect(() => {
+    hasStartedRef.current = state.hasStarted;
+  }, [state.hasStarted]);
 
   // Auto-hide controls
   const resetHideTimer = useCallback(() => {
@@ -147,7 +218,7 @@ export function VPlayer({
       document.removeEventListener("fullscreenchange", handleFSChange);
   }, []);
 
-  // Reset player state when src changes
+  // Reset player state when activeSrc changes (including playlist advances)
   useEffect(() => {
     setState((s) => ({
       ...s,
@@ -158,8 +229,37 @@ export function VPlayer({
       buffered: 0,
       isLoading: false,
     }));
+    milestonesFiredRef.current = new Set();
     setEmbedStarted(false);
-  }, [src]);
+
+    if (playlistAdvancingRef.current) {
+      playlistAdvancingRef.current = false;
+      const v = videoRef.current;
+      if (v) {
+        setState((s) => ({ ...s, hasStarted: true, isLoading: true }));
+        const attemptPlay = () => {
+          v.play()
+            .then(() =>
+              setState((s) => ({ ...s, isPlaying: true, isLoading: false }))
+            )
+            .catch(() => setState((s) => ({ ...s, isPlaying: false })));
+        };
+        v.addEventListener("canplay", attemptPlay, { once: true });
+        return () => {
+          v.removeEventListener("canplay", attemptPlay);
+        };
+      }
+    }
+  }, [activeSrc]);
+
+  // TextTrack API — switch active caption track
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !tracks?.length) return;
+    Array.from(v.textTracks).forEach((track, i) => {
+      track.mode = i === activeTrack ? "showing" : "hidden";
+    });
+  }, [activeTrack, tracks]);
 
   // ---- Native Video Event Handlers ----
   const handleLoadedMetadata = useCallback(() => {
@@ -180,17 +280,25 @@ export function VPlayer({
       currentTime: v.currentTime,
     }));
     onTimeUpdate?.(v.currentTime, v.duration);
-  }, [onTimeUpdate]);
+    if (onMilestone && v.duration > 0) {
+      const pct = (v.currentTime / v.duration) * 100;
+      for (const milestone of [25, 50, 75, 100] as const) {
+        if (pct >= milestone && !milestonesFiredRef.current.has(milestone)) {
+          milestonesFiredRef.current.add(milestone);
+          onMilestone(milestone);
+        }
+      }
+    }
+  }, [onTimeUpdate, onMilestone]);
 
   const handleProgress = useCallback(() => {
     const v = videoRef.current;
     if (!v || v.buffered.length === 0) return;
     const end = v.buffered.end(v.buffered.length - 1);
-    setState((s) => ({
-      ...s,
-      buffered: v.duration ? (end / v.duration) * 100 : 0,
-    }));
-  }, []);
+    const pct = v.duration ? (end / v.duration) * 100 : 0;
+    setState((s) => ({ ...s, buffered: pct }));
+    onBuffer?.(pct);
+  }, [onBuffer]);
 
   const handleWaiting = useCallback(() => {
     setState((s) => ({ ...s, isLoading: true }));
@@ -201,9 +309,15 @@ export function VPlayer({
   }, []);
 
   const handleVideoEnded = useCallback(() => {
-    setState((s) => ({ ...s, isPlaying: false, showControls: true }));
-    onEnded?.();
-  }, [onEnded]);
+    if (isPlaylist && currentIndex < srcList.length - 1) {
+      playlistAdvancingRef.current = true;
+      setCurrentIndex((i) => i + 1);
+      onNext?.();
+    } else {
+      setState((s) => ({ ...s, isPlaying: false, showControls: true }));
+      onEnded?.();
+    }
+  }, [isPlaylist, currentIndex, srcList.length, onNext, onEnded]);
 
   // ---- Play / Pause ----
   const togglePlay = useCallback(() => {
@@ -274,6 +388,35 @@ export function VPlayer({
 
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
+    },
+    []
+  );
+
+  const handleProgressTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setIsDragging(true);
+      const v = videoRef.current;
+      const bar = progressRef.current;
+      if (!v || !bar) return;
+      const rect = bar.getBoundingClientRect();
+
+      const onMove = (ev: TouchEvent) => {
+        const touch = ev.touches[0];
+        if (!touch) return;
+        const pct = clamp((touch.clientX - rect.left) / rect.width, 0, 1);
+        v.currentTime = pct * v.duration;
+        setState((s) => ({ ...s, currentTime: v.currentTime }));
+      };
+
+      const onEnd = () => {
+        setIsDragging(false);
+        window.removeEventListener("touchmove", onMove);
+        window.removeEventListener("touchend", onEnd);
+      };
+
+      window.addEventListener("touchmove", onMove, { passive: false });
+      window.addEventListener("touchend", onEnd);
     },
     []
   );
@@ -368,75 +511,51 @@ export function VPlayer({
       const v = videoRef.current;
       if (!v) return;
 
-      switch (e.key) {
-        case " ":
-        case "k":
-          e.preventDefault();
-          togglePlay();
-          break;
-        case "ArrowLeft":
-          e.preventDefault();
-          v.currentTime = Math.max(0, v.currentTime - 5);
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          v.currentTime = Math.min(v.duration, v.currentTime + 5);
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          v.volume = clamp(v.volume + 0.1, 0, 1);
-          setState((s) => ({ ...s, volume: v.volume, isMuted: false }));
-          v.muted = false;
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          v.volume = clamp(v.volume - 0.1, 0, 1);
-          setState((s) => ({
-            ...s,
-            volume: v.volume,
-            isMuted: v.volume === 0,
-          }));
-          break;
-        case "f":
-          e.preventDefault();
-          toggleFullscreen();
-          break;
-        case "m":
-          e.preventDefault();
-          toggleMute();
-          break;
-        case "0":
-        case "1":
-        case "2":
-        case "3":
-        case "4":
-        case "5":
-        case "6":
-        case "7":
-        case "8":
-        case "9": {
-          e.preventDefault();
-          const pct = parseInt(e.key) / 10;
-          v.currentTime = pct * v.duration;
-          break;
-        }
-        case "<":
-          e.preventDefault();
-          {
-            const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
-            if (idx > 0) setPlaybackRate(PLAYBACK_RATES[idx - 1]);
-          }
-          break;
-        case ">":
-          e.preventDefault();
-          {
-            const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
-            if (idx < PLAYBACK_RATES.length - 1)
-              setPlaybackRate(PLAYBACK_RATES[idx + 1]);
-          }
-          break;
-        default:
-          break;
+      if (matchesKey(e.key, resolvedKeymap.play)) {
+        e.preventDefault();
+        togglePlay();
+      } else if (matchesKey(e.key, resolvedKeymap.seekBack)) {
+        e.preventDefault();
+        v.currentTime = Math.max(0, v.currentTime - 5);
+      } else if (matchesKey(e.key, resolvedKeymap.seekForward)) {
+        e.preventDefault();
+        v.currentTime = Math.min(v.duration, v.currentTime + 5);
+      } else if (matchesKey(e.key, resolvedKeymap.volumeUp)) {
+        e.preventDefault();
+        v.volume = clamp(v.volume + 0.1, 0, 1);
+        setState((s) => ({ ...s, volume: v.volume, isMuted: false }));
+        v.muted = false;
+      } else if (matchesKey(e.key, resolvedKeymap.volumeDown)) {
+        e.preventDefault();
+        v.volume = clamp(v.volume - 0.1, 0, 1);
+        setState((s) => ({ ...s, volume: v.volume, isMuted: v.volume === 0 }));
+      } else if (matchesKey(e.key, resolvedKeymap.fullscreen)) {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (matchesKey(e.key, resolvedKeymap.mute)) {
+        e.preventDefault();
+        toggleMute();
+      } else if (matchesKey(e.key, resolvedKeymap.speedDown)) {
+        e.preventDefault();
+        const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
+        if (idx > 0) setPlaybackRate(PLAYBACK_RATES[idx - 1]);
+      } else if (matchesKey(e.key, resolvedKeymap.speedUp)) {
+        e.preventDefault();
+        const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
+        if (idx < PLAYBACK_RATES.length - 1)
+          setPlaybackRate(PLAYBACK_RATES[idx + 1]);
+      } else if (matchesKey(e.key, resolvedKeymap.shortcuts)) {
+        e.preventDefault();
+        setShowShortcuts((prev) => !prev);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setShowShortcuts(false);
+        setShowSpeedMenu(false);
+        setShowCCMenu(false);
+      } else if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        const pct = parseInt(e.key) / 10;
+        v.currentTime = pct * v.duration;
       }
       resetHideTimer();
     },
@@ -444,6 +563,7 @@ export function VPlayer({
       state.isFocused,
       state.playbackRate,
       isNative,
+      resolvedKeymap,
       togglePlay,
       toggleFullscreen,
       toggleMute,
@@ -452,7 +572,7 @@ export function VPlayer({
     ]
   );
 
-  // Mouse activity
+  // Mouse / touch activity
   const handleMouseMove = useCallback(() => {
     resetHideTimer();
   }, [resetHideTimer]);
@@ -473,10 +593,33 @@ export function VPlayer({
   const progress =
     state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0;
 
+  // Thumbnail frame index for hover preview
+  const thumbFrame =
+    previewThumbnails && hoverProgress !== null
+      ? Math.min(
+          Math.floor((hoverProgress / 100) * previewThumbnails.count),
+          previewThumbnails.count - 1
+        )
+      : null;
+
+  // Chapter label near the hover position
+  const nearChapter =
+    chapters && hoverProgress !== null
+      ? chapters.find(
+          (ch) =>
+            state.duration > 0 &&
+            Math.abs((ch.time / state.duration) * 100 - hoverProgress) < 2
+        )
+      : undefined;
+
   const posterUrl = poster || DEFAULT_POSTER;
   const showPoster = !state.hasStarted;
   const controlsVisible =
-    state.showControls || !state.isPlaying || isDragging || showSpeedMenu;
+    state.showControls ||
+    !state.isPlaying ||
+    isDragging ||
+    showSpeedMenu ||
+    showCCMenu;
 
   // Volume icon
   const VolumeIcon = state.isMuted
@@ -498,6 +641,7 @@ export function VPlayer({
       onKeyDown={handleKeyDown}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onTouchStart={handleMouseMove}
     >
       {/* Aspect ratio box */}
       <div style={getAspectBoxStyle(ratio)}>
@@ -522,7 +666,18 @@ export function VPlayer({
               onEnded={handleVideoEnded}
               onClick={togglePlay}
               aria-hidden="true"
-            />
+            >
+              {tracks?.map((t, i) => (
+                <track
+                  key={i}
+                  kind="subtitles"
+                  src={t.src}
+                  srcLang={t.lang}
+                  label={t.label}
+                  default={t.default}
+                />
+              ))}
+            </video>
           )}
 
           {/* ---- Embed (YouTube / Vimeo / Bilibili) ---- */}
@@ -577,6 +732,42 @@ export function VPlayer({
             <div style={getTitleOverlayStyle()}>{title}</div>
           )}
 
+          {/* ---- Keyboard Shortcuts Overlay ---- */}
+          {showShortcuts && (
+            <div
+              style={getShortcutsOverlayStyle()}
+              onClick={() => setShowShortcuts(false)}
+            >
+              <div
+                style={getShortcutsBoxStyle()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div
+                  style={{
+                    fontWeight: 600,
+                    marginBottom: "12px",
+                    fontSize: "14px",
+                  }}
+                >
+                  Keyboard Shortcuts
+                </div>
+                {SHORTCUTS.map(([key, label]) => (
+                  <div key={key} style={getShortcutRowStyle()}>
+                    <kbd style={getKbdStyle()}>{key}</kbd>
+                    <span
+                      style={{
+                        color: "rgba(255,255,255,0.75)",
+                        fontSize: "13px",
+                      }}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ---- Controls (native only) ---- */}
           {isNative && state.hasStarted && (
             <div style={getControlsBarStyle(controlsVisible)}>
@@ -586,6 +777,7 @@ export function VPlayer({
                 style={getProgressContainerStyle()}
                 onClick={handleProgressClick}
                 onMouseDown={handleProgressMouseDown}
+                onTouchStart={handleProgressTouchStart}
                 onMouseMove={handleProgressHover}
                 onMouseLeave={() => setHoverProgress(null)}
                 role="slider"
@@ -607,6 +799,17 @@ export function VPlayer({
                   <div
                     style={getProgressFillStyle(progress, accentColor)}
                   />
+                  {/* Chapter markers */}
+                  {chapters &&
+                    state.duration > 0 &&
+                    chapters.map((ch, i) => (
+                      <div
+                        key={i}
+                        style={getChapterMarkerStyle(
+                          (ch.time / state.duration) * 100
+                        )}
+                      />
+                    ))}
                 </div>
                 <div
                   style={getProgressThumbStyle(
@@ -615,10 +818,23 @@ export function VPlayer({
                     hoverProgress !== null || isDragging
                   )}
                 />
+                {/* Thumbnail preview */}
+                {thumbFrame !== null &&
+                  previewThumbnails &&
+                  hoverProgress !== null && (
+                    <div
+                      style={getPreviewThumbnailStyle(
+                        hoverProgress,
+                        previewThumbnails,
+                        thumbFrame
+                      )}
+                    />
+                  )}
                 {/* Hover tooltip */}
                 {hoverProgress !== null && state.duration > 0 && (
                   <div style={getTooltipStyle(hoverProgress)}>
-                    {formatTime((hoverProgress / 100) * state.duration)}
+                    {nearChapter?.label ??
+                      formatTime((hoverProgress / 100) * state.duration)}
                   </div>
                 )}
               </div>
@@ -649,6 +865,38 @@ export function VPlayer({
                       <PlayIcon size={20} color={iconColor} />
                     )}
                   </button>
+
+                  {/* Playlist prev / next */}
+                  {isPlaylist && (
+                    <>
+                      {currentIndex > 0 && (
+                        <button
+                          type="button"
+                          style={getControlButtonStyle()}
+                          onClick={() => {
+                            setCurrentIndex((i) => i - 1);
+                            onPrev?.();
+                          }}
+                          aria-label="Previous"
+                        >
+                          <PrevIcon size={18} color={iconColor} />
+                        </button>
+                      )}
+                      {currentIndex < srcList.length - 1 && (
+                        <button
+                          type="button"
+                          style={getControlButtonStyle()}
+                          onClick={() => {
+                            setCurrentIndex((i) => i + 1);
+                            onNext?.();
+                          }}
+                          aria-label="Next"
+                        >
+                          <NextIcon size={18} color={iconColor} />
+                        </button>
+                      )}
+                    </>
+                  )}
 
                   {/* Volume */}
                   <div
@@ -713,6 +961,57 @@ export function VPlayer({
 
                 {/* Right group */}
                 <div style={getControlGroupStyle()}>
+                  {/* CC button */}
+                  {tracks && tracks.length > 0 && (
+                    <div style={{ position: "relative" }}>
+                      <button
+                        type="button"
+                        style={getControlButtonStyle()}
+                        onClick={() => setShowCCMenu(!showCCMenu)}
+                        aria-label="Captions"
+                        aria-expanded={showCCMenu}
+                      >
+                        <CCIcon
+                          size={18}
+                          color={activeTrack !== null ? accentColor : iconColor}
+                        />
+                      </button>
+                      {showCCMenu && (
+                        <div style={getCCMenuStyle()}>
+                          <button
+                            type="button"
+                            style={getSpeedMenuItemStyle(
+                              activeTrack === null,
+                              accentColor
+                            )}
+                            onClick={() => {
+                              setActiveTrack(null);
+                              setShowCCMenu(false);
+                            }}
+                          >
+                            Off
+                          </button>
+                          {tracks.map((t, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              style={getSpeedMenuItemStyle(
+                                activeTrack === i,
+                                accentColor
+                              )}
+                              onClick={() => {
+                                setActiveTrack(i);
+                                setShowCCMenu(false);
+                              }}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Speed */}
                   <div style={{ position: "relative" }}>
                     <button

@@ -2,9 +2,11 @@ import * as react_jsx_runtime from 'react/jsx-runtime';
 import { CSSProperties } from 'react';
 
 type VideoSource = "native" | "youtube" | "vimeo" | "bilibili";
+type VPlayerAction = "play" | "mute" | "fullscreen" | "seekBack" | "seekForward" | "volumeUp" | "volumeDown" | "speedDown" | "speedUp" | "shortcuts";
+type VPlayerKeymap = Partial<Record<VPlayerAction, string | string[] | false>>;
 interface VPlayerProps {
-    /** Video source URL - local file, YouTube, Vimeo, or Bilibili link */
-    src: string;
+    /** Video source URL(s) - local file, YouTube, Vimeo, or Bilibili link. Pass an array for playlist mode. */
+    src: string | string[];
     /** Poster image URL shown before playback */
     poster?: string;
     /** Player width - accepts CSS value or number (px) */
@@ -39,6 +41,35 @@ interface VPlayerProps {
     preload?: "none" | "metadata" | "auto";
     /** ARIA label for accessibility */
     ariaLabel?: string;
+    /** Subtitle/caption tracks */
+    tracks?: {
+        src: string;
+        label: string;
+        lang: string;
+        default?: boolean;
+    }[];
+    /** Callback when buffer progress changes (0–100) */
+    onBuffer?: (percent: number) => void;
+    /** Chapter markers displayed on the progress bar */
+    chapters?: {
+        time: number;
+        label: string;
+    }[];
+    /** Thumbnail preview sprite sheet for hover scrubbing */
+    previewThumbnails?: {
+        src: string;
+        width: number;
+        height: number;
+        count: number;
+    };
+    /** Callback fired once each time a 25/50/75/100% milestone is reached */
+    onMilestone?: (percent: 25 | 50 | 75 | 100) => void;
+    /** Callback when navigating to the next playlist item */
+    onNext?: () => void;
+    /** Callback when navigating to the previous playlist item */
+    onPrev?: () => void;
+    /** Custom key bindings — set a binding to false to disable it */
+    keymap?: VPlayerKeymap;
 }
 interface VideoState {
     isPlaying: boolean;
@@ -60,7 +91,7 @@ interface ParsedSource {
     videoId: string;
 }
 
-declare function VPlayer({ src, poster, width, aspectRatio, accentColor, iconColor, autoPlay, loop, muted, title, className, style, onPlay, onPause, onEnded, onTimeUpdate, preload, ariaLabel, }: VPlayerProps): react_jsx_runtime.JSX.Element;
+declare function VPlayer({ src, poster, width, aspectRatio, accentColor, iconColor, autoPlay, loop, muted, title, className, style, onPlay, onPause, onEnded, onTimeUpdate, preload, ariaLabel, tracks, onBuffer, chapters, previewThumbnails, onMilestone, onNext, onPrev, keymap, }: VPlayerProps): react_jsx_runtime.JSX.Element;
 
 /**
  * Parse a video URL and determine its source type and embed URL.
@@ -75,4 +106,4 @@ declare function formatTime(seconds: number): string;
  */
 declare function parseAspectRatio(ratio: string): number;
 
-export { type ParsedSource, VPlayer, type VPlayerProps, type VideoSource, type VideoState, formatTime, parseAspectRatio, parseVideoSource };
+export { type ParsedSource, VPlayer, type VPlayerAction, type VPlayerKeymap, type VPlayerProps, type VideoSource, type VideoState, formatTime, parseAspectRatio, parseVideoSource };

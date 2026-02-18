@@ -4,5 +4,7 @@ export type {
   VideoSource,
   VideoState,
   ParsedSource,
+  VPlayerAction,
+  VPlayerKeymap,
 } from "./types";
 export { parseVideoSource, formatTime, parseAspectRatio } from "./utils";

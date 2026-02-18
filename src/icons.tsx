@@ -228,3 +228,31 @@ export function SpinnerIcon({ size = 40, color = "#fff", style }: IconProps) {
     </svg>
   );
 }
+
+export function CCIcon({ size = 20, color = "#fff", style }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={style}>
+      <rect x="2" y="5" width="20" height="14" rx="2" stroke={color} strokeWidth="1.5" />
+      <path d="M7 12.5c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M13 12.5c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function PrevIcon({ size = 20, color = "#fff", style }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={style}>
+      <path d="M19 5L9 12l10 7V5Z" fill={color} />
+      <rect x="5" y="5" width="2" height="14" rx="1" fill={color} />
+    </svg>
+  );
+}
+
+export function NextIcon({ size = 20, color = "#fff", style }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={style}>
+      <path d="M5 5l10 7-10 7V5Z" fill={color} />
+      <rect x="17" y="5" width="2" height="14" rx="1" fill={color} />
+    </svg>
+  );
+}

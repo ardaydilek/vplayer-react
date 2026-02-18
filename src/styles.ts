@@ -378,6 +378,108 @@ export function getTooltipStyle(x: number): React.CSSProperties {
   };
 }
 
+export function getCCMenuStyle(): React.CSSProperties {
+  return {
+    position: "absolute",
+    bottom: "48px",
+    right: "0",
+    backgroundColor: "rgba(20,20,20,0.95)",
+    borderRadius: "8px",
+    padding: "4px 0",
+    minWidth: "120px",
+    zIndex: 30,
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    border: "1px solid rgba(255,255,255,0.1)",
+  };
+}
+
+export function getShortcutsOverlayStyle(): React.CSSProperties {
+  return {
+    position: "absolute",
+    inset: 0,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 40,
+  };
+}
+
+export function getShortcutsBoxStyle(): React.CSSProperties {
+  return {
+    backgroundColor: "rgba(20,20,20,0.97)",
+    borderRadius: "12px",
+    padding: "20px 24px",
+    minWidth: "280px",
+    border: "1px solid rgba(255,255,255,0.1)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+    color: "#fff",
+  };
+}
+
+export function getShortcutRowStyle(): React.CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "5px 0",
+    gap: "16px",
+  };
+}
+
+export function getKbdStyle(): React.CSSProperties {
+  return {
+    fontFamily: "monospace",
+    fontSize: "12px",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    border: "1px solid rgba(255,255,255,0.2)",
+    borderRadius: "4px",
+    padding: "2px 6px",
+    color: "#fff",
+    whiteSpace: "nowrap",
+  };
+}
+
+export function getChapterMarkerStyle(pct: number): React.CSSProperties {
+  return {
+    position: "absolute",
+    left: `${pct}%`,
+    top: 0,
+    bottom: 0,
+    width: "2px",
+    backgroundColor: "rgba(255,255,255,0.5)",
+    transform: "translateX(-50%)",
+    pointerEvents: "none",
+    zIndex: 3,
+  };
+}
+
+export function getPreviewThumbnailStyle(
+  x: number,
+  thumb: { src: string; width: number; height: number; count: number },
+  frameIndex: number
+): React.CSSProperties {
+  const safeX = Math.min(Math.max(x, 5), 95);
+  return {
+    position: "absolute",
+    bottom: "52px",
+    left: `${safeX}%`,
+    transform: "translateX(-50%)",
+    width: `${thumb.width}px`,
+    height: `${thumb.height}px`,
+    backgroundImage: `url(${thumb.src})`,
+    backgroundPosition: `-${frameIndex * thumb.width}px 0`,
+    backgroundSize: `${thumb.width * thumb.count}px ${thumb.height}px`,
+    backgroundRepeat: "no-repeat",
+    borderRadius: "4px",
+    border: "2px solid rgba(255,255,255,0.3)",
+    pointerEvents: "none",
+    zIndex: 5,
+  };
+}
+
 /** Keyframe injection for spinner animation - runs once */
 let injected = false;
 export function injectKeyframes(): void {
