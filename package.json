@@ -22,7 +22,8 @@
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm,iife --dts --external react --external react-dom --globalName VPlayerReact",
     "prepublishOnly": "npm run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "keywords": [
     "react",
@@ -39,7 +40,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ardaydilek/vplayer-react"
+    "url": "git+https://github.com/ardaydilek/vplayer-react.git"
   },
   "homepage": "https://github.com/ardaydilek/vplayer-react#readme",
   "bugs": {
@@ -50,11 +51,12 @@
     "react-dom": ">=18.0.0"
   },
   "devDependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
   }
 }
