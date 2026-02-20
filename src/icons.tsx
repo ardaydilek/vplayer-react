@@ -239,6 +239,24 @@ export function CCIcon({ size = 20, color = "#fff", style }: IconProps) {
   );
 }
 
+export function ErrorIcon({ size = 40, color = "#fff", style }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={style}
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2" />
+      <path d="M12 8v4" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="12" cy="16" r="1" fill="#ef4444" />
+    </svg>
+  );
+}
+
 export function PrevIcon({ size = 20, color = "#fff", style }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={style}>

@@ -6,9 +6,11 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useImperativeHandle,
+  forwardRef,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { VPlayerProps, VideoState, VPlayerAction } from "./types";
+import type { VPlayerProps, VPlayerHandle, VideoState, VPlayerAction } from "./types";
 import { parseVideoSource, formatTime, clamp, parseAspectRatio } from "./utils";
 import {
   PlayIcon,
@@ -22,6 +24,7 @@ import {
   PipIcon,
   SpinnerIcon,
   CCIcon,
+  ErrorIcon,
   PrevIcon,
   NextIcon,
 } from "./icons";
@@ -46,8 +49,11 @@ import {
   getTimeDisplayStyle,
   getVolumeSliderContainerStyle,
   getVolumeSliderTrackStyle,
+  getVolumeSliderTrackBarStyle,
   getVolumeSliderFillStyle,
   getVolumeSliderThumbStyle,
+  getErrorOverlayStyle,
+  getErrorMessageStyle,
   getLoadingOverlayStyle,
   getTitleOverlayStyle,
   getSpeedMenuStyle,
@@ -68,10 +74,12 @@ const DEFAULT_POSTER =
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const HIDE_CONTROLS_DELAY = 3000;
+const VOLUME_STORAGE_KEY = "vplayer-volume";
 
 const SHORTCUTS: [string, string][] = [
   ["Space / K", "Play / Pause"],
   ["← / →", "Seek ±5s"],
+  ["Shift+← / →", "Prev / Next chapter"],
   ["↑ / ↓", "Volume ±10%"],
   ["F", "Fullscreen"],
   ["M", "Mute"],
@@ -101,38 +109,68 @@ function matchesKey(
   return Array.isArray(binding) ? binding.includes(key) : binding === key;
 }
 
-export function VPlayer({
-  src,
-  poster,
-  width = "100%",
-  aspectRatio = "16:9",
-  accentColor = "#e11d48",
-  iconColor = "#ffffff",
-  autoPlay = false,
-  loop = false,
-  muted = false,
-  title,
-  className,
-  style,
-  onPlay,
-  onPause,
-  onEnded,
-  onTimeUpdate,
-  preload = "metadata",
-  ariaLabel,
-  tracks,
-  onBuffer,
-  chapters,
-  previewThumbnails,
-  onMilestone,
-  onNext,
-  onPrev,
-  keymap,
-}: VPlayerProps) {
+export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
+  {
+    src,
+    poster,
+    width = "100%",
+    aspectRatio = "16:9",
+    accentColor = "#e11d48",
+    iconColor = "#ffffff",
+    initialTime,
+    autoPlay = false,
+    loop = false,
+    loopPlaylist = false,
+    muted = false,
+    title,
+    className,
+    style,
+    onPlay,
+    onPause,
+    onEnded,
+    onError,
+    onSeek,
+    onTimeUpdate,
+    preload = "metadata",
+    ariaLabel,
+    tracks,
+    onBuffer,
+    chapters,
+    previewThumbnails,
+    onMilestone,
+    onNext,
+    onPrev,
+    activeIndex,
+    onIndexChange,
+    persistVolume = false,
+    onChapterChange,
+    onVolumeChange,
+    keymap,
+  },
+  ref
+) {
   // ---- Playlist resolution ----
   const srcList = Array.isArray(src) ? src : [src];
   const isPlaylist = srcList.length > 1;
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [internalIndex, setInternalIndex] = useState(0);
+
+  const isControlled = activeIndex !== undefined;
+  const currentIndex = isControlled ? activeIndex : internalIndex;
+
+  const setCurrentIndex = useCallback(
+    (updater: number | ((prev: number) => number)) => {
+      const nextIndex =
+        typeof updater === "function" ? updater(currentIndex) : updater;
+      if (isControlled) {
+        onIndexChange?.(nextIndex);
+      } else {
+        setInternalIndex(nextIndex);
+        onIndexChange?.(nextIndex);
+      }
+    },
+    [isControlled, currentIndex, onIndexChange]
+  );
+
   const activeSrc = srcList[currentIndex] ?? srcList[0];
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -143,6 +181,8 @@ export function VPlayer({
   const hasStartedRef = useRef(false);
   const milestonesFiredRef = useRef<Set<number>>(new Set());
   const playlistAdvancingRef = useRef(false);
+  const initialTimeAppliedRef = useRef(false);
+  const currentChapterRef = useRef<string | null>(null);
 
   const parsed = parseVideoSource(activeSrc);
   const ratio = parseAspectRatio(aspectRatio);
@@ -153,19 +193,38 @@ export function VPlayer({
     [keymap]
   );
 
-  const [state, setState] = useState<VideoState>({
-    isPlaying: false,
-    currentTime: 0,
-    duration: 0,
-    volume: muted ? 0 : 1,
-    isMuted: muted,
-    isFullscreen: false,
-    buffered: 0,
-    isLoading: false,
-    hasStarted: false,
-    showControls: true,
-    isFocused: false,
-    playbackRate: 1,
+  const [state, setState] = useState<VideoState>(() => {
+    let volume = muted ? 0 : 1;
+    let isMuted = muted;
+    if (persistVolume && typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(VOLUME_STORAGE_KEY);
+        if (stored !== null) {
+          const vol = parseFloat(stored);
+          if (isFinite(vol) && vol >= 0 && vol <= 1) {
+            volume = vol;
+            isMuted = vol === 0;
+          }
+        }
+      } catch {
+        // localStorage unavailable (SSR, private browsing)
+      }
+    }
+    return {
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+      volume,
+      isMuted,
+      isFullscreen: false,
+      buffered: 0,
+      isLoading: false,
+      hasStarted: false,
+      showControls: true,
+      isFocused: false,
+      playbackRate: 1,
+      error: null,
+    };
   });
 
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
@@ -183,6 +242,19 @@ export function VPlayer({
     injectKeyframes();
     setSupportsPip("pictureInPictureEnabled" in document);
   }, []);
+
+  // Persist volume to localStorage
+  useEffect(() => {
+    if (!persistVolume) return;
+    try {
+      localStorage.setItem(
+        VOLUME_STORAGE_KEY,
+        String(state.isMuted ? 0 : state.volume)
+      );
+    } catch {
+      // ignore
+    }
+  }, [persistVolume, state.volume, state.isMuted]);
 
   // Keep refs in sync for use inside resetHideTimer
   useEffect(() => {
@@ -210,12 +282,18 @@ export function VPlayer({
     const handleFSChange = () => {
       setState((s) => ({
         ...s,
-        isFullscreen: !!document.fullscreenElement,
+        isFullscreen: !!(
+          document.fullscreenElement ||
+          (document as any).webkitFullscreenElement
+        ),
       }));
     };
     document.addEventListener("fullscreenchange", handleFSChange);
-    return () =>
+    document.addEventListener("webkitfullscreenchange", handleFSChange);
+    return () => {
       document.removeEventListener("fullscreenchange", handleFSChange);
+      document.removeEventListener("webkitfullscreenchange", handleFSChange);
+    };
   }, []);
 
   // Reset player state when activeSrc changes (including playlist advances)
@@ -228,6 +306,7 @@ export function VPlayer({
       isPlaying: false,
       buffered: 0,
       isLoading: false,
+      error: null,
     }));
     milestonesFiredRef.current = new Set();
     setEmbedStarted(false);
@@ -265,12 +344,22 @@ export function VPlayer({
   const handleLoadedMetadata = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
+    if (
+      initialTime &&
+      initialTime > 0 &&
+      !initialTimeAppliedRef.current &&
+      initialTime < v.duration
+    ) {
+      v.currentTime = initialTime;
+      initialTimeAppliedRef.current = true;
+    }
     setState((s) => ({
       ...s,
       duration: v.duration,
+      currentTime: v.currentTime,
       isLoading: false,
     }));
-  }, []);
+  }, [initialTime]);
 
   const handleTimeUpdate = useCallback(() => {
     const v = videoRef.current;
@@ -289,7 +378,21 @@ export function VPlayer({
         }
       }
     }
-  }, [onTimeUpdate, onMilestone]);
+    if (onChapterChange && chapters && chapters.length > 0 && v.duration > 0) {
+      let current: { time: number; label: string } | null = null;
+      for (let i = chapters.length - 1; i >= 0; i--) {
+        if (v.currentTime >= chapters[i].time) {
+          current = chapters[i];
+          break;
+        }
+      }
+      const currentLabel = current?.label ?? null;
+      if (currentLabel !== currentChapterRef.current) {
+        currentChapterRef.current = currentLabel;
+        onChapterChange(current);
+      }
+    }
+  }, [onTimeUpdate, onMilestone, onChapterChange, chapters]);
 
   const handleProgress = useCallback(() => {
     const v = videoRef.current;
@@ -304,20 +407,38 @@ export function VPlayer({
     setState((s) => ({ ...s, isLoading: true }));
   }, []);
 
+  const handleDurationChange = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || !isFinite(v.duration)) return;
+    setState((s) => ({ ...s, duration: v.duration }));
+  }, []);
+
   const handleCanPlay = useCallback(() => {
     setState((s) => ({ ...s, isLoading: false }));
   }, []);
+
+  const handleError = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const error = v.error ?? null;
+    setState((s) => ({ ...s, error, isLoading: false }));
+    onError?.(error);
+  }, [onError]);
 
   const handleVideoEnded = useCallback(() => {
     if (isPlaylist && currentIndex < srcList.length - 1) {
       playlistAdvancingRef.current = true;
       setCurrentIndex((i) => i + 1);
       onNext?.();
+    } else if (isPlaylist && loopPlaylist) {
+      playlistAdvancingRef.current = true;
+      setCurrentIndex(0);
+      onNext?.();
     } else {
       setState((s) => ({ ...s, isPlaying: false, showControls: true }));
       onEnded?.();
     }
-  }, [isPlaylist, currentIndex, srcList.length, onNext, onEnded]);
+  }, [isPlaylist, currentIndex, srcList.length, loopPlaylist, onNext, onEnded]);
 
   // ---- Play / Pause ----
   const togglePlay = useCallback(() => {
@@ -361,8 +482,9 @@ export function VPlayer({
       const pct = clamp((e.clientX - rect.left) / rect.width, 0, 1);
       v.currentTime = pct * v.duration;
       setState((s) => ({ ...s, currentTime: v.currentTime }));
+      onSeek?.(v.currentTime);
     },
-    []
+    [onSeek]
   );
 
   const handleProgressMouseDown = useCallback(
@@ -382,6 +504,7 @@ export function VPlayer({
 
       const onUp = () => {
         setIsDragging(false);
+        if (v) onSeek?.(v.currentTime);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
@@ -389,37 +512,53 @@ export function VPlayer({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    []
+    [onSeek]
   );
 
-  const handleProgressTouchStart = useCallback(
-    (e: React.TouchEvent<HTMLDivElement>) => {
+  // Attach progress bar touch listener via useEffect with { passive: false }
+  // to avoid "Unable to preventDefault inside passive event listener" console error
+  useEffect(() => {
+    const bar = progressRef.current;
+    if (!bar) return;
+
+    const onTouchStart = (e: TouchEvent) => {
       e.preventDefault();
       setIsDragging(true);
       const v = videoRef.current;
-      const bar = progressRef.current;
-      if (!v || !bar) return;
+      if (!v) return;
       const rect = bar.getBoundingClientRect();
 
-      const onMove = (ev: TouchEvent) => {
-        const touch = ev.touches[0];
-        if (!touch) return;
+      const touch = e.touches[0];
+      if (touch) {
         const pct = clamp((touch.clientX - rect.left) / rect.width, 0, 1);
+        v.currentTime = pct * v.duration;
+        setState((s) => ({ ...s, currentTime: v.currentTime }));
+      }
+
+      const onMove = (ev: TouchEvent) => {
+        const t = ev.touches[0];
+        if (!t) return;
+        const pct = clamp((t.clientX - rect.left) / rect.width, 0, 1);
         v.currentTime = pct * v.duration;
         setState((s) => ({ ...s, currentTime: v.currentTime }));
       };
 
       const onEnd = () => {
         setIsDragging(false);
+        onSeek?.(v.currentTime);
         window.removeEventListener("touchmove", onMove);
         window.removeEventListener("touchend", onEnd);
       };
 
       window.addEventListener("touchmove", onMove, { passive: false });
       window.addEventListener("touchend", onEnd);
-    },
-    []
-  );
+    };
+
+    bar.addEventListener("touchstart", onTouchStart, { passive: false });
+    return () => {
+      bar.removeEventListener("touchstart", onTouchStart);
+    };
+  }, [onSeek]);
 
   const handleProgressHover = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
@@ -440,11 +579,13 @@ export function VPlayer({
       v.muted = false;
       v.volume = state.volume > 0 ? state.volume : 1;
       setState((s) => ({ ...s, isMuted: false, volume: v.volume }));
+      onVolumeChange?.(v.volume, false);
     } else {
       v.muted = true;
       setState((s) => ({ ...s, isMuted: true }));
+      onVolumeChange?.(0, true);
     }
-  }, [state.volume]);
+  }, [state.volume, onVolumeChange]);
 
   const handleVolumeChange = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
@@ -456,16 +597,23 @@ export function VPlayer({
       v.volume = pct;
       v.muted = pct === 0;
       setState((s) => ({ ...s, volume: pct, isMuted: pct === 0 }));
+      onVolumeChange?.(pct, pct === 0);
     },
-    []
+    [onVolumeChange]
   );
 
   // ---- Fullscreen ----
   const toggleFullscreen = useCallback(() => {
     const c = containerRef.current;
+    const v = videoRef.current;
     if (!c) return;
     if (!document.fullscreenElement) {
-      c.requestFullscreen?.();
+      if (c.requestFullscreen) {
+        c.requestFullscreen();
+      } else if (v && (v as any).webkitEnterFullscreen) {
+        // iOS Safari fallback — fullscreen the video element directly
+        (v as any).webkitEnterFullscreen();
+      }
     } else {
       document.exitFullscreen?.();
     }
@@ -500,9 +648,12 @@ export function VPlayer({
     setState((s) => ({ ...s, isFocused: true }));
   }, []);
 
-  const handleBlur = useCallback(() => {
+  const handleBlur = useCallback((e: React.FocusEvent) => {
+    // Don't blur if focus is still within the container
+    if (containerRef.current?.contains(e.relatedTarget as Node)) return;
     setState((s) => ({ ...s, isFocused: false }));
     setShowSpeedMenu(false);
+    setShowCCMenu(false);
   }, []);
 
   const handleKeyDown = useCallback(
@@ -510,6 +661,24 @@ export function VPlayer({
       if (!state.isFocused || !isNative) return;
       const v = videoRef.current;
       if (!v) return;
+
+      // Chapter navigation (Shift + Arrow) — must be before regular seek
+      if (e.shiftKey && e.key === "ArrowLeft" && chapters && chapters.length > 0) {
+        e.preventDefault();
+        const target = [...chapters]
+          .reverse()
+          .find((ch) => ch.time < v.currentTime - 2);
+        v.currentTime = target ? target.time : 0;
+        resetHideTimer();
+        return;
+      }
+      if (e.shiftKey && e.key === "ArrowRight" && chapters && chapters.length > 0) {
+        e.preventDefault();
+        const target = chapters.find((ch) => ch.time > v.currentTime + 0.5);
+        if (target) v.currentTime = target.time;
+        resetHideTimer();
+        return;
+      }
 
       if (matchesKey(e.key, resolvedKeymap.play)) {
         e.preventDefault();
@@ -525,10 +694,12 @@ export function VPlayer({
         v.volume = clamp(v.volume + 0.1, 0, 1);
         setState((s) => ({ ...s, volume: v.volume, isMuted: false }));
         v.muted = false;
+        onVolumeChange?.(v.volume, false);
       } else if (matchesKey(e.key, resolvedKeymap.volumeDown)) {
         e.preventDefault();
         v.volume = clamp(v.volume - 0.1, 0, 1);
         setState((s) => ({ ...s, volume: v.volume, isMuted: v.volume === 0 }));
+        onVolumeChange?.(v.volume, v.volume === 0);
       } else if (matchesKey(e.key, resolvedKeymap.fullscreen)) {
         e.preventDefault();
         toggleFullscreen();
@@ -569,6 +740,8 @@ export function VPlayer({
       toggleMute,
       setPlaybackRate,
       resetHideTimer,
+      chapters,
+      onVolumeChange,
     ]
   );
 
@@ -628,11 +801,45 @@ export function VPlayer({
       ? VolumeLowIcon
       : VolumeHighIcon;
 
+  // ---- Imperative handle ----
+  useImperativeHandle(
+    ref,
+    () => ({
+      play: () => {
+        const v = videoRef.current;
+        if (v) v.play().catch(() => {});
+      },
+      pause: () => {
+        const v = videoRef.current;
+        if (v) v.pause();
+      },
+      seek: (time: number) => {
+        const v = videoRef.current;
+        if (v) v.currentTime = clamp(time, 0, v.duration || Infinity);
+      },
+      getCurrentTime: () => videoRef.current?.currentTime ?? 0,
+      getDuration: () => videoRef.current?.duration ?? 0,
+      getVolume: () => videoRef.current?.volume ?? state.volume,
+      setVolume: (volume: number) => {
+        const v = videoRef.current;
+        if (!v) return;
+        v.volume = clamp(volume, 0, 1);
+        v.muted = volume === 0;
+        setState((s) => ({ ...s, volume: v.volume, isMuted: v.muted }));
+      },
+      toggleMute: () => toggleMute(),
+      toggleFullscreen: () => toggleFullscreen(),
+      getVideoElement: () => videoRef.current,
+    }),
+    [state.volume, toggleMute, toggleFullscreen]
+  );
+
   return (
     <div
       ref={containerRef}
       className={className}
-      style={{ ...getContainerStyle(width, state.isFocused), ...style }}
+      data-vplayer-root=""
+      style={{ ...getContainerStyle(width), ...style }}
       tabIndex={0}
       role="region"
       aria-label={ariaLabel || `Video player${title ? `: ${title}` : ""}`}
@@ -644,8 +851,8 @@ export function VPlayer({
       onTouchStart={handleMouseMove}
     >
       {/* Aspect ratio box */}
-      <div style={getAspectBoxStyle(ratio)}>
-        <div style={getInnerStyle()}>
+      <div data-vplayer-aspect="" style={getAspectBoxStyle(ratio)}>
+        <div data-vplayer-inner="" style={getInnerStyle()}>
           {/* ---- Native Video ---- */}
           {isNative && (
             <video
@@ -659,11 +866,13 @@ export function VPlayer({
               playsInline
               style={getVideoStyle()}
               onLoadedMetadata={handleLoadedMetadata}
+              onDurationChange={handleDurationChange}
               onTimeUpdate={handleTimeUpdate}
               onProgress={handleProgress}
               onWaiting={handleWaiting}
               onCanPlay={handleCanPlay}
               onEnded={handleVideoEnded}
+              onError={handleError}
               onClick={togglePlay}
               aria-hidden="true"
             >
@@ -692,38 +901,50 @@ export function VPlayer({
             />
           )}
 
-          {/* ---- Poster Overlay ---- */}
-          {showPoster && (
-            <div
-              style={getPosterOverlayStyle(posterUrl)}
-              onClick={startPlayback}
-              role="button"
-              tabIndex={-1}
+          {/* ---- Poster Overlay (fade transition) ---- */}
+          <div
+            style={getPosterOverlayStyle(posterUrl, showPoster)}
+            onClick={showPoster ? startPlayback : undefined}
+            role={showPoster ? "button" : undefined}
+            tabIndex={showPoster ? -1 : undefined}
+            aria-label={showPoster ? "Play video" : undefined}
+            aria-hidden={!showPoster}
+          >
+            <div style={getPosterGradientStyle()} />
+            <button
+              type="button"
+              style={getPlayButtonLargeStyle(accentColor)}
+              tabIndex={showPoster ? 0 : -1}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.transform =
+                  "scale(1.08)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.transform =
+                  "scale(1)";
+              }}
               aria-label="Play video"
             >
-              <div style={getPosterGradientStyle()} />
-              <button
-                type="button"
-                style={getPlayButtonLargeStyle(accentColor)}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.transform =
-                    "scale(1.08)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.transform =
-                    "scale(1)";
-                }}
-                aria-label="Play video"
-              >
-                <PlayIcon size={32} color={iconColor} />
-              </button>
+              <PlayIcon size={32} color={iconColor} />
+            </button>
+          </div>
+
+          {/* ---- Loading Spinner ---- */}
+          {state.isLoading && state.hasStarted && !state.error && (
+            <div style={getLoadingOverlayStyle()}>
+              <SpinnerIcon size={40} color={iconColor} />
             </div>
           )}
 
-          {/* ---- Loading Spinner ---- */}
-          {state.isLoading && state.hasStarted && (
-            <div style={getLoadingOverlayStyle()}>
-              <SpinnerIcon size={40} color={iconColor} />
+          {/* ---- Error State ---- */}
+          {state.error && (
+            <div style={getErrorOverlayStyle()}>
+              <ErrorIcon size={40} color={iconColor} />
+              <span style={getErrorMessageStyle()}>
+                {state.error.code === 4
+                  ? "This video format is not supported"
+                  : "Video could not be loaded"}
+              </span>
             </div>
           )}
 
@@ -777,7 +998,6 @@ export function VPlayer({
                 style={getProgressContainerStyle()}
                 onClick={handleProgressClick}
                 onMouseDown={handleProgressMouseDown}
-                onTouchStart={handleProgressTouchStart}
                 onMouseMove={handleProgressHover}
                 onMouseLeave={() => setHoverProgress(null)}
                 role="slider"
@@ -924,6 +1144,7 @@ export function VPlayer({
                     </button>
                     {showVolumeSlider && (
                       <div
+                        data-vplayer-volume-slider=""
                         style={getVolumeSliderTrackStyle()}
                         onClick={handleVolumeChange}
                         role="slider"
@@ -935,6 +1156,7 @@ export function VPlayer({
                         )}
                         tabIndex={-1}
                       >
+                        <div style={getVolumeSliderTrackBarStyle()} />
                         <div
                           style={getVolumeSliderFillStyle(
                             state.isMuted ? 0 : state.volume,
@@ -1131,4 +1353,4 @@ export function VPlayer({
       </div>
     </div>
   );
-}
+});

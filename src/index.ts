@@ -1,6 +1,7 @@
 export { VPlayer } from "./VPlayer";
 export type {
   VPlayerProps,
+  VPlayerHandle,
   VideoSource,
   VideoState,
   ParsedSource,

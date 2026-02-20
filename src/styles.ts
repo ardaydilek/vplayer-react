@@ -6,21 +6,15 @@ import type React from "react";
  */
 
 export function getContainerStyle(
-  width: string | number,
-  isFocused: boolean
+  width: string | number
 ): React.CSSProperties {
   return {
     position: "relative",
     width: typeof width === "number" ? `${width}px` : width,
     maxWidth: "100%",
     backgroundColor: "#000",
-    borderRadius: "12px",
     overflow: "hidden",
-    outline: isFocused ? "2px solid rgba(255,255,255,0.2)" : "none",
-    outlineOffset: "2px",
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    lineHeight: 1.5,
+    outline: "none",
     userSelect: "none",
     WebkitUserSelect: "none",
     isolation: "isolate",
@@ -59,7 +53,10 @@ export function getIframeStyle(): React.CSSProperties {
   };
 }
 
-export function getPosterOverlayStyle(posterUrl: string): React.CSSProperties {
+export function getPosterOverlayStyle(
+  posterUrl: string,
+  visible: boolean
+): React.CSSProperties {
   return {
     position: "absolute",
     inset: 0,
@@ -69,8 +66,11 @@ export function getPosterOverlayStyle(posterUrl: string): React.CSSProperties {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    cursor: "pointer",
+    cursor: visible ? "pointer" : "default",
     zIndex: 10,
+    opacity: visible ? 1 : 0,
+    transition: "opacity 0.3s ease",
+    pointerEvents: visible ? "auto" : "none",
   };
 }
 
@@ -252,11 +252,24 @@ export function getVolumeSliderContainerStyle(): React.CSSProperties {
 export function getVolumeSliderTrackStyle(): React.CSSProperties {
   return {
     width: "60px",
-    height: "4px",
-    backgroundColor: "rgba(255,255,255,0.2)",
+    height: "20px",
+    backgroundColor: "transparent",
     borderRadius: "2px",
     position: "relative",
     cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+  };
+}
+
+export function getVolumeSliderTrackBarStyle(): React.CSSProperties {
+  return {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: "4px",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: "2px",
   };
 }
 
@@ -294,6 +307,29 @@ export function getVolumeSliderThumbStyle(
   };
 }
 
+export function getErrorOverlayStyle(): React.CSSProperties {
+  return {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "12px",
+    backgroundColor: "rgba(0,0,0,0.7)",
+    zIndex: 15,
+  };
+}
+
+export function getErrorMessageStyle(): React.CSSProperties {
+  return {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: "14px",
+    textAlign: "center",
+    maxWidth: "80%",
+  };
+}
+
 export function getLoadingOverlayStyle(): React.CSSProperties {
   return {
     position: "absolute",
@@ -328,11 +364,13 @@ export function getSpeedMenuStyle(): React.CSSProperties {
   return {
     position: "absolute",
     bottom: "48px",
-    right: "8px",
+    right: 0,
     backgroundColor: "rgba(20,20,20,0.95)",
     borderRadius: "8px",
     padding: "4px 0",
     minWidth: "100px",
+    maxHeight: "240px",
+    overflowY: "auto",
     zIndex: 30,
     backdropFilter: "blur(8px)",
     WebkitBackdropFilter: "blur(8px)",
@@ -480,7 +518,7 @@ export function getPreviewThumbnailStyle(
   };
 }
 
-/** Keyframe injection for spinner animation - runs once */
+/** Scoped stylesheet injection — runs once */
 let injected = false;
 export function injectKeyframes(): void {
   if (injected || typeof document === "undefined") return;
@@ -490,6 +528,35 @@ export function injectKeyframes(): void {
     @keyframes vplayer-spin {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
+    }
+    [data-vplayer-root] {
+      border-radius: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.5;
+    }
+    [data-vplayer-root]:focus-visible {
+      outline: 2px solid rgba(255,255,255,0.2);
+      outline-offset: 2px;
+    }
+    [data-vplayer-root]:fullscreen,
+    [data-vplayer-root]:-webkit-full-screen {
+      width: 100% !important;
+      max-width: 100% !important;
+      border-radius: 0 !important;
+    }
+    [data-vplayer-root]:fullscreen [data-vplayer-aspect],
+    [data-vplayer-root]:-webkit-full-screen [data-vplayer-aspect] {
+      padding-top: 0 !important;
+      height: 100vh;
+    }
+    [data-vplayer-root]:fullscreen [data-vplayer-inner],
+    [data-vplayer-root]:-webkit-full-screen [data-vplayer-inner] {
+      position: static;
+    }
+    @media (pointer: coarse) {
+      [data-vplayer-volume-slider] {
+        display: none !important;
+      }
     }
   `;
   document.head.appendChild(style);

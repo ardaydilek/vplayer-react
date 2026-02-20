@@ -1,5 +1,4 @@
-import * as react_jsx_runtime from 'react/jsx-runtime';
-import { CSSProperties } from 'react';
+import React, { CSSProperties } from 'react';
 
 type VideoSource = "native" | "youtube" | "vimeo" | "bilibili";
 type VPlayerAction = "play" | "mute" | "fullscreen" | "seekBack" | "seekForward" | "volumeUp" | "volumeDown" | "speedDown" | "speedUp" | "shortcuts";
@@ -17,10 +16,14 @@ interface VPlayerProps {
     accentColor?: string;
     /** Icon color for play/pause and control icons */
     iconColor?: string;
+    /** Start playback at this timestamp (seconds) */
+    initialTime?: number;
     /** Whether the video should autoplay */
     autoPlay?: boolean;
     /** Whether the video should loop */
     loop?: boolean;
+    /** When true and in playlist mode, wraps back to the first video after the last one ends */
+    loopPlaylist?: boolean;
     /** Whether the video is muted by default */
     muted?: boolean;
     /** Title shown in the top-left overlay */
@@ -35,6 +38,10 @@ interface VPlayerProps {
     onPause?: () => void;
     /** Callback when the video ends */
     onEnded?: () => void;
+    /** Callback when the video encounters an error */
+    onError?: (error: MediaError | null) => void;
+    /** Callback fired after the user completes a seek (mouseup/touchend on progress bar) */
+    onSeek?: (time: number) => void;
     /** Callback with current time updates */
     onTimeUpdate?: (currentTime: number, duration: number) => void;
     /** Preload behavior for native video */
@@ -68,6 +75,19 @@ interface VPlayerProps {
     onNext?: () => void;
     /** Callback when navigating to the previous playlist item */
     onPrev?: () => void;
+    /** Controlled playlist index. When provided, the player treats this as the source of truth. */
+    activeIndex?: number;
+    /** Callback when the playlist index changes (called for both user navigation and auto-advance) */
+    onIndexChange?: (index: number) => void;
+    /** Persist volume to localStorage so it survives page reloads */
+    persistVolume?: boolean;
+    /** Callback when the current chapter changes during playback */
+    onChapterChange?: (chapter: {
+        time: number;
+        label: string;
+    } | null) => void;
+    /** Callback when volume or mute state changes */
+    onVolumeChange?: (volume: number, muted: boolean) => void;
     /** Custom key bindings — set a binding to false to disable it */
     keymap?: VPlayerKeymap;
 }
@@ -84,6 +104,29 @@ interface VideoState {
     showControls: boolean;
     isFocused: boolean;
     playbackRate: number;
+    error: MediaError | null;
+}
+interface VPlayerHandle {
+    /** Start playback */
+    play: () => void;
+    /** Pause playback */
+    pause: () => void;
+    /** Seek to a specific time in seconds */
+    seek: (time: number) => void;
+    /** Get the current playback time in seconds */
+    getCurrentTime: () => number;
+    /** Get the total duration in seconds */
+    getDuration: () => number;
+    /** Get the current volume (0-1) */
+    getVolume: () => number;
+    /** Set volume (0-1) */
+    setVolume: (volume: number) => void;
+    /** Toggle mute */
+    toggleMute: () => void;
+    /** Toggle fullscreen */
+    toggleFullscreen: () => void;
+    /** Get the underlying HTMLVideoElement (for advanced use) */
+    getVideoElement: () => HTMLVideoElement | null;
 }
 interface ParsedSource {
     type: VideoSource;
@@ -91,7 +134,7 @@ interface ParsedSource {
     videoId: string;
 }
 
-declare function VPlayer({ src, poster, width, aspectRatio, accentColor, iconColor, autoPlay, loop, muted, title, className, style, onPlay, onPause, onEnded, onTimeUpdate, preload, ariaLabel, tracks, onBuffer, chapters, previewThumbnails, onMilestone, onNext, onPrev, keymap, }: VPlayerProps): react_jsx_runtime.JSX.Element;
+declare const VPlayer: React.ForwardRefExoticComponent<VPlayerProps & React.RefAttributes<VPlayerHandle>>;
 
 /**
  * Parse a video URL and determine its source type and embed URL.
@@ -106,4 +149,4 @@ declare function formatTime(seconds: number): string;
  */
 declare function parseAspectRatio(ratio: string): number;
 
-export { type ParsedSource, VPlayer, type VPlayerAction, type VPlayerKeymap, type VPlayerProps, type VideoSource, type VideoState, formatTime, parseAspectRatio, parseVideoSource };
+export { type ParsedSource, VPlayer, type VPlayerAction, type VPlayerHandle, type VPlayerKeymap, type VPlayerProps, type VideoSource, type VideoState, formatTime, parseAspectRatio, parseVideoSource };

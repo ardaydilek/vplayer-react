@@ -9,19 +9,25 @@ A lightweight, dependency-free, production-ready video player for React. Support
 - **Zero dependencies** — Pure React, inline styles, no CSS files to import
 - **Universal sources** — Local/remote MP4, YouTube, Vimeo, Bilibili from one component
 - **Playlist support** — Pass a URL array for prev/next controls and auto-advance
+- **Controlled playlists** — Drive the active track externally with `activeIndex` + `onIndexChange`
 - **Captions & subtitles** — WebVTT tracks with a CC picker in the control bar
 - **Chapter markers** — Tick marks on the progress bar with hover labels
 - **Thumbnail preview** — Sprite-sheet frame preview while scrubbing
-- **Analytics callbacks** — `onBuffer`, `onMilestone` (25/50/75/100%), `onPlay`, `onPause`, `onEnded`
+- **Ref API** — Programmatic control via `play()`, `pause()`, `seek()`, and more
+- **Error handling** — `onError` callback with built-in error overlay UI
+- **Resume playback** — `initialTime` prop to start at a specific timestamp
+- **Volume persistence** — Remember volume across page reloads via `persistVolume`
+- **Analytics callbacks** — `onBuffer`, `onMilestone`, `onSeek`, `onChapterChange`, `onVolumeChange`, and more
 - **Custom keymaps** — Remap or disable any keyboard shortcut via `keymap` prop
-- **Touch scrubbing** — Full mobile touch support on the progress bar
+- **Touch support** — Full mobile touch support on progress bar and controls
 - **Brand configurable** — Accent color and icon color props for instant theming
+- **Tailwind friendly** — Decorative styles use low-specificity rules, so `className` works without `!important`
 - **Keyboard shortcuts** — Full keyboard support, scoped to the player (no page takeover)
 - **Performance optimized** — Lazy-loaded embeds, metadata preloading, no layout shift
 - **Accessible** — ARIA attributes, focus management, screen reader support
 - **Responsive** — Fluid width with configurable aspect ratio
 - **Picture-in-Picture** — Native PiP support where available
-- **Playback speed** — 0.25× to 2× speed control
+- **Playback speed** — 0.25x to 2x speed control
 
 ---
 
@@ -41,9 +47,7 @@ pnpm add vplayer-react
 
 ---
 
-## Usage
-
-### Basic — Next.js App Router
+## Quick Start
 
 ```tsx
 import { VPlayer } from 'vplayer-react';
@@ -55,21 +59,23 @@ export default function Page() {
       poster="/poster.jpg"
       title="Product Demo"
       accentColor="#e11d48"
-      iconColor="#ffffff"
-      aspectRatio="16:9"
     />
   );
 }
 ```
 
-Since `VPlayer` uses `"use client"` internally, it works seamlessly in both Server Components and Client Components.
+Since `VPlayer` uses `"use client"` internally, it works seamlessly in both Server Components and Client Components in Next.js.
+
+---
+
+## Usage Examples
 
 ### YouTube / Vimeo / Bilibili
 
 ```tsx
-<VPlayer src="https://www.youtube.com/watch?v=dQw4w9WgXcQ" title="YouTube Video" accentColor="#ff0000" />
-<VPlayer src="https://vimeo.com/347119375" title="Vimeo Video" accentColor="#1ab7ea" />
-<VPlayer src="https://www.bilibili.com/video/BV1GJ411x7h7" title="Bilibili Video" accentColor="#fb7299" />
+<VPlayer src="https://www.youtube.com/watch?v=dQw4w9WgXcQ" title="YouTube" />
+<VPlayer src="https://vimeo.com/347119375" title="Vimeo" />
+<VPlayer src="https://www.bilibili.com/video/BV1GJ411x7h7" title="Bilibili" />
 ```
 
 ### Playlist
@@ -78,36 +84,77 @@ Pass an array of URLs. Prev / Next buttons appear automatically in the control b
 
 ```tsx
 <VPlayer
-  src={[
-    "/episode-1.mp4",
-    "/episode-2.mp4",
-    "/episode-3.mp4",
-  ]}
+  src={["/episode-1.mp4", "/episode-2.mp4", "/episode-3.mp4"]}
   title="My Series"
-  onNext={() => console.log("advanced to next")}
-  onPrev={() => console.log("went back")}
+  onNext={() => console.log("next")}
+  onPrev={() => console.log("prev")}
   onEnded={() => console.log("playlist finished")}
 />
 ```
 
-### Captions & Subtitles
+### Controlled Playlist
 
-Provide an array of WebVTT track descriptors. A CC button appears in the control bar — the user can pick any track or turn them off.
+Drive the active track from your own UI (e.g. a sidebar episode list). When `activeIndex` is provided, the player treats it as the source of truth — your `onIndexChange` handler is responsible for updating the value.
+
+```tsx
+const [track, setTrack] = useState(0);
+
+<VPlayer
+  src={["/ep-1.mp4", "/ep-2.mp4", "/ep-3.mp4"]}
+  activeIndex={track}
+  onIndexChange={(i) => setTrack(i)}
+/>
+
+{/* External track list */}
+<ul>
+  {episodes.map((ep, i) => (
+    <li key={i} onClick={() => setTrack(i)}>{ep.title}</li>
+  ))}
+</ul>
+```
+
+If `activeIndex` is omitted, the player manages the index internally and `onIndexChange` fires as an informational callback.
+
+### Loop Playlist
+
+Wrap back to the first track when the last one ends:
+
+```tsx
+<VPlayer
+  src={["/track-1.mp4", "/track-2.mp4", "/track-3.mp4"]}
+  loopPlaylist
+/>
+```
+
+### Resume Playback (initialTime)
+
+Start playback at a specific timestamp — useful for "continue where you left off" flows:
+
+```tsx
+<VPlayer
+  src="/movie.mp4"
+  initialTime={1234} // starts at 20:34
+/>
+```
+
+`initialTime` is applied once on the first track load and does not re-apply when advancing through a playlist.
+
+### Captions & Subtitles
 
 ```tsx
 <VPlayer
   src="/documentary.mp4"
   tracks={[
     { src: "/en.vtt", label: "English", lang: "en", default: true },
-    { src: "/es.vtt", label: "Español", lang: "es" },
-    { src: "/fr.vtt", label: "Français", lang: "fr" },
+    { src: "/es.vtt", label: "Espanol", lang: "es" },
+    { src: "/fr.vtt", label: "Francais", lang: "fr" },
   ]}
 />
 ```
 
 ### Chapter Markers
 
-Tick marks appear on the progress bar at each chapter's timestamp. Hovering over a tick shows the chapter label instead of the time.
+Tick marks appear on the progress bar at each chapter's timestamp. Hovering over a tick shows the chapter label.
 
 ```tsx
 <VPlayer
@@ -118,12 +165,15 @@ Tick marks appear on the progress bar at each chapter's timestamp. Hovering over
     { time: 360, label: "Act II" },
     { time: 600, label: "Finale" },
   ]}
+  onChapterChange={(chapter) => {
+    console.log("Now playing:", chapter?.label ?? "none");
+  }}
 />
 ```
 
-### Thumbnail Preview on Scrub
+Use `Shift + Left Arrow` / `Shift + Right Arrow` to jump between chapters via keyboard.
 
-Provide a sprite-sheet image to show frame previews while hovering the progress bar.
+### Thumbnail Preview
 
 ```tsx
 <VPlayer
@@ -132,39 +182,100 @@ Provide a sprite-sheet image to show frame previews while hovering the progress 
     src: "/thumbnails-sprite.jpg",
     width: 160,
     height: 90,
-    count: 60,   // number of frames in the sprite
+    count: 60,
   }}
 />
 ```
 
-The sprite is expected to be a horizontal strip: all frames in a single row, each `width × height` pixels.
+The sprite is expected to be a horizontal strip: all frames in a single row, each `width x height` pixels.
+
+### Error Handling
+
+```tsx
+<VPlayer
+  src="/video.mp4"
+  onError={(error) => {
+    console.error("Video error:", error?.code, error?.message);
+    // MediaError.code: 1=ABORTED, 2=NETWORK, 3=DECODE, 4=SRC_NOT_SUPPORTED
+  }}
+/>
+```
+
+When a video fails to load, the player shows a built-in error overlay with a message. The `onError` callback receives the native `MediaError` object.
+
+### Volume Persistence
+
+Remember the user's volume preference across page reloads:
+
+```tsx
+<VPlayer src="/video.mp4" persistVolume />
+```
+
+Volume is stored in `localStorage` under the key `vplayer-volume`. Safe for SSR and private browsing (uses try/catch).
 
 ### Analytics Callbacks
 
 ```tsx
 <VPlayer
   src="/product-demo.mp4"
-  onPlay={()  => analytics.track("video_play")}
-  onPause={()  => analytics.track("video_pause")}
-  onEnded={()  => analytics.track("video_complete")}
+  onPlay={() => analytics.track("video_play")}
+  onPause={() => analytics.track("video_pause")}
+  onEnded={() => analytics.track("video_complete")}
+  onSeek={(time) => console.log(`seeked to ${time}s`)}
   onBuffer={(pct) => console.log(`buffered ${pct.toFixed(0)}%`)}
-  onMilestone={(pct) => {
-    // Fires exactly once per src at 25, 50, 75, and 100 %
-    analytics.track("video_milestone", { percent: pct });
-  }}
+  onMilestone={(pct) => analytics.track("milestone", { percent: pct })}
+  onVolumeChange={(vol, muted) => console.log(`volume: ${vol}, muted: ${muted}`)}
+  onChapterChange={(ch) => console.log("chapter:", ch?.label)}
   onTimeUpdate={(time, duration) => console.log(time, duration)}
 />
 ```
 
-### Custom Key Bindings
+### Ref API (Programmatic Control)
 
-Override any action with a different key, an array of keys, or `false` to disable it entirely.
+Control the player programmatically via a ref:
+
+```tsx
+import { useRef } from 'react';
+import { VPlayer, type VPlayerHandle } from 'vplayer-react';
+
+function MyPlayer() {
+  const playerRef = useRef<VPlayerHandle>(null);
+
+  return (
+    <>
+      <VPlayer ref={playerRef} src="/video.mp4" />
+
+      <button onClick={() => playerRef.current?.play()}>Play</button>
+      <button onClick={() => playerRef.current?.pause()}>Pause</button>
+      <button onClick={() => playerRef.current?.seek(60)}>Jump to 1:00</button>
+      <button onClick={() => playerRef.current?.toggleFullscreen()}>Fullscreen</button>
+    </>
+  );
+}
+```
+
+**Available methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `play()` | `void` | Start playback |
+| `pause()` | `void` | Pause playback |
+| `seek(time)` | `void` | Seek to a specific time (seconds) |
+| `getCurrentTime()` | `number` | Get the current playback time |
+| `getDuration()` | `number` | Get the total duration |
+| `getVolume()` | `number` | Get the current volume (0-1) |
+| `setVolume(vol)` | `void` | Set volume (0-1) |
+| `toggleMute()` | `void` | Toggle mute on/off |
+| `toggleFullscreen()` | `void` | Toggle fullscreen mode |
+| `getVideoElement()` | `HTMLVideoElement \| null` | Access the underlying video element |
+
+### Custom Key Bindings
 
 ```tsx
 import type { VPlayerKeymap } from 'vplayer-react';
 
 const keymap: VPlayerKeymap = {
-  play:       "p",            // p → play/pause instead of Space / K
+  play:       "p",            // p to play/pause instead of Space / K
   fullscreen: ["f", "F"],     // accept both cases
   mute:       false,          // disable M key completely
   shortcuts:  false,          // hide the ? overlay
@@ -172,8 +283,6 @@ const keymap: VPlayerKeymap = {
 
 <VPlayer src="/video.mp4" keymap={keymap} />
 ```
-
-Available actions: `play`, `mute`, `fullscreen`, `seekBack`, `seekForward`, `volumeUp`, `volumeDown`, `speedDown`, `speedUp`, `shortcuts`.
 
 ### Brand Configuration
 
@@ -184,6 +293,26 @@ Available actions: `play`, `mute`, `fullscreen`, `seekBack`, `seekForward`, `vol
   iconColor="#ffffff"    // play/pause, volume, fullscreen icons
   poster="/brand-poster.jpg"
   title="Brand Demo"
+/>
+```
+
+### Styling with Tailwind CSS
+
+Decorative styles (border-radius, font-family) use low-specificity CSS rules scoped to `[data-vplayer-root]`, so Tailwind classes on `className` work naturally:
+
+```tsx
+<VPlayer
+  src="/video.mp4"
+  className="rounded-none shadow-lg"
+/>
+```
+
+For properties set as inline styles (like `backgroundColor`), use the `style` prop to override:
+
+```tsx
+<VPlayer
+  src="/video.mp4"
+  style={{ backgroundColor: "transparent" }}
 />
 ```
 
@@ -229,66 +358,60 @@ const VPlayer = dynamic(
 | `aspectRatio` | `string` | `"16:9"` | Aspect ratio as `"w:h"` string |
 | `accentColor` | `string` | `"#e11d48"` | Brand color for progress bar, thumb, and active UI |
 | `iconColor` | `string` | `"#ffffff"` | Color for play/pause and control icons |
+| `initialTime` | `number` | — | Start playback at this timestamp (seconds) |
 | `autoPlay` | `boolean` | `false` | Autoplay on mount |
-| `loop` | `boolean` | `false` | Loop video playback |
+| `loop` | `boolean` | `false` | Loop single video playback |
+| `loopPlaylist` | `boolean` | `false` | Loop entire playlist (wraps to first track after last) |
 | `muted` | `boolean` | `false` | Start muted |
 | `title` | `string` | — | Title overlay shown during playback |
 | `className` | `string` | — | CSS class for the outer container |
 | `style` | `CSSProperties` | — | Inline styles for the outer container |
 | `preload` | `"none" \| "metadata" \| "auto"` | `"metadata"` | Preload behavior for native video |
 | `ariaLabel` | `string` | auto-generated | Custom ARIA label |
-| `tracks` | `Track[]` | — | WebVTT subtitle/caption tracks (see below) |
-| `chapters` | `Chapter[]` | — | Chapter markers on the progress bar (see below) |
-| `previewThumbnails` | `ThumbnailConfig` | — | Sprite-sheet config for hover preview (see below) |
-| `keymap` | `VPlayerKeymap` | — | Override key bindings per action (see below) |
-| `onPlay` | `() => void` | — | Fires when playback starts |
-| `onPause` | `() => void` | — | Fires when playback is paused |
-| `onEnded` | `() => void` | — | Fires when playback ends (last track in playlist) |
-| `onTimeUpdate` | `(time, duration) => void` | — | Fires on every time update |
-| `onBuffer` | `(percent: number) => void` | — | Fires when the buffered range changes (0–100) |
-| `onMilestone` | `(percent: 25 \| 50 \| 75 \| 100) => void` | — | Fires once per src at each watch milestone |
-| `onNext` | `() => void` | — | Fires when advancing to the next playlist track |
-| `onPrev` | `() => void` | — | Fires when going back to the previous playlist track |
+| `tracks` | `Track[]` | — | WebVTT subtitle/caption tracks |
+| `chapters` | `Chapter[]` | — | Chapter markers on the progress bar |
+| `previewThumbnails` | `ThumbnailConfig` | — | Sprite-sheet config for hover preview |
+| `keymap` | `VPlayerKeymap` | — | Override key bindings per action |
+| `activeIndex` | `number` | — | Controlled playlist index |
+| `persistVolume` | `boolean` | `false` | Persist volume to localStorage across reloads |
+| `ref` | `Ref<VPlayerHandle>` | — | Ref for programmatic control |
 
-### Track shape
+### Callbacks
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `onPlay` | `() => void` | Fires when playback starts |
+| `onPause` | `() => void` | Fires when playback is paused |
+| `onEnded` | `() => void` | Fires when playback ends (last track in playlist) |
+| `onError` | `(error: MediaError \| null) => void` | Fires when the video encounters an error |
+| `onSeek` | `(time: number) => void` | Fires after the user completes a seek |
+| `onTimeUpdate` | `(time, duration) => void` | Fires on every time update |
+| `onBuffer` | `(percent: number) => void` | Fires when the buffered range changes (0-100) |
+| `onMilestone` | `(percent: 25 \| 50 \| 75 \| 100) => void` | Fires once per src at each watch milestone |
+| `onNext` | `() => void` | Fires when advancing to the next playlist track |
+| `onPrev` | `() => void` | Fires when going to the previous playlist track |
+| `onIndexChange` | `(index: number) => void` | Fires when the playlist index changes |
+| `onChapterChange` | `(chapter \| null) => void` | Fires when the current chapter changes |
+| `onVolumeChange` | `(volume, muted) => void` | Fires when volume or mute state changes |
+
+### Type Shapes
 
 ```ts
-{
-  src: string;      // URL to a .vtt file
-  label: string;    // Display name in the CC menu
-  lang: string;     // BCP-47 language tag, e.g. "en"
-  default?: boolean // Pre-select this track on load
-}
-```
+// Track (for captions/subtitles)
+{ src: string; label: string; lang: string; default?: boolean }
 
-### Chapter shape
-
-```ts
+// Chapter
 { time: number; label: string }
-// time is in seconds from the start of the video
-```
 
-### ThumbnailConfig shape
+// ThumbnailConfig
+{ src: string; width: number; height: number; count: number }
 
-```ts
-{
-  src: string;   // URL to a horizontal sprite-sheet image
-  width: number; // Width of each frame in pixels
-  height: number;// Height of each frame in pixels
-  count: number; // Total number of frames in the sprite
-}
-```
+// VPlayerKeymap
+Partial<Record<VPlayerAction, string | string[] | false>>
 
-### VPlayerKeymap shape
-
-```ts
-type VPlayerAction =
-  | "play" | "mute" | "fullscreen"
-  | "seekBack" | "seekForward"
-  | "volumeUp" | "volumeDown"
-  | "speedDown" | "speedUp" | "shortcuts";
-
-type VPlayerKeymap = Partial<Record<VPlayerAction, string | string[] | false>>;
+// VPlayerAction
+"play" | "mute" | "fullscreen" | "seekBack" | "seekForward"
+| "volumeUp" | "volumeDown" | "speedDown" | "speedUp" | "shortcuts"
 ```
 
 ---
@@ -304,9 +427,11 @@ All shortcuts are **scoped to the player** — they only work when the player ha
 | `M` | Toggle mute |
 | `Left Arrow` | Rewind 5 seconds |
 | `Right Arrow` | Forward 5 seconds |
+| `Shift + Left Arrow` | Jump to previous chapter |
+| `Shift + Right Arrow` | Jump to next chapter |
 | `Up Arrow` | Volume up 10% |
 | `Down Arrow` | Volume down 10% |
-| `0`–`9` | Seek to 0%–90% |
+| `0`-`9` | Seek to 0%-90% |
 | `<` / `>` | Decrease / Increase playback speed |
 | `?` | Toggle keyboard shortcuts overlay |
 | `Escape` | Close menus / shortcuts overlay |
@@ -333,6 +458,7 @@ export { VPlayer } from 'vplayer-react';
 // Types
 export type {
   VPlayerProps,
+  VPlayerHandle,
   VPlayerAction,
   VPlayerKeymap,
   VideoSource,
@@ -353,7 +479,7 @@ export { parseVideoSource, formatTime, parseAspectRatio } from 'vplayer-react';
 - Safari 14+
 - Edge 80+
 
-Picture-in-Picture requires browser support (Chrome, Edge, Safari). Fullscreen API is supported in all modern browsers. Touch scrubbing works on all mobile browsers.
+Picture-in-Picture requires browser support (Chrome, Edge, Safari). Fullscreen uses the standard Fullscreen API with `webkitEnterFullscreen` fallback for iOS Safari. Touch scrubbing works on all mobile browsers.
 
 ---
 

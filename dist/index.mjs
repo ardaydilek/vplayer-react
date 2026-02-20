@@ -4,7 +4,9 @@ import {
   useState,
   useCallback,
   useEffect,
-  useMemo
+  useMemo,
+  useImperativeHandle,
+  forwardRef
 } from "react";
 
 // src/utils.ts
@@ -346,6 +348,25 @@ function CCIcon({ size = 20, color = "#fff", style }) {
     /* @__PURE__ */ jsx("path", { d: "M13 12.5c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2", stroke: color, strokeWidth: "1.5", strokeLinecap: "round" })
   ] });
 }
+function ErrorIcon({ size = 40, color = "#fff", style }) {
+  return /* @__PURE__ */ jsxs(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      xmlns: "http://www.w3.org/2000/svg",
+      style,
+      "aria-hidden": "true",
+      children: [
+        /* @__PURE__ */ jsx("circle", { cx: "12", cy: "12", r: "10", stroke: "#ef4444", strokeWidth: "2" }),
+        /* @__PURE__ */ jsx("path", { d: "M12 8v4", stroke: "#ef4444", strokeWidth: "2", strokeLinecap: "round" }),
+        /* @__PURE__ */ jsx("circle", { cx: "12", cy: "16", r: "1", fill: "#ef4444" })
+      ]
+    }
+  );
+}
 function PrevIcon({ size = 20, color = "#fff", style }) {
   return /* @__PURE__ */ jsxs("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true", style, children: [
     /* @__PURE__ */ jsx("path", { d: "M19 5L9 12l10 7V5Z", fill: color }),
@@ -360,18 +381,14 @@ function NextIcon({ size = 20, color = "#fff", style }) {
 }
 
 // src/styles.ts
-function getContainerStyle(width, isFocused) {
+function getContainerStyle(width) {
   return {
     position: "relative",
     width: typeof width === "number" ? `${width}px` : width,
     maxWidth: "100%",
     backgroundColor: "#000",
-    borderRadius: "12px",
     overflow: "hidden",
-    outline: isFocused ? "2px solid rgba(255,255,255,0.2)" : "none",
-    outlineOffset: "2px",
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    lineHeight: 1.5,
+    outline: "none",
     userSelect: "none",
     WebkitUserSelect: "none",
     isolation: "isolate"
@@ -405,7 +422,7 @@ function getIframeStyle() {
     border: "none"
   };
 }
-function getPosterOverlayStyle(posterUrl) {
+function getPosterOverlayStyle(posterUrl, visible) {
   return {
     position: "absolute",
     inset: 0,
@@ -415,8 +432,11 @@ function getPosterOverlayStyle(posterUrl) {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    cursor: "pointer",
-    zIndex: 10
+    cursor: visible ? "pointer" : "default",
+    zIndex: 10,
+    opacity: visible ? 1 : 0,
+    transition: "opacity 0.3s ease",
+    pointerEvents: visible ? "auto" : "none"
   };
 }
 function getPosterGradientStyle() {
@@ -573,11 +593,23 @@ function getVolumeSliderContainerStyle() {
 function getVolumeSliderTrackStyle() {
   return {
     width: "60px",
-    height: "4px",
-    backgroundColor: "rgba(255,255,255,0.2)",
+    height: "20px",
+    backgroundColor: "transparent",
     borderRadius: "2px",
     position: "relative",
-    cursor: "pointer"
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center"
+  };
+}
+function getVolumeSliderTrackBarStyle() {
+  return {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: "4px",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: "2px"
   };
 }
 function getVolumeSliderFillStyle(volume, accentColor) {
@@ -604,6 +636,27 @@ function getVolumeSliderThumbStyle(volume, accentColor) {
     boxShadow: `0 0 4px ${accentColor}66`,
     zIndex: 1,
     pointerEvents: "none"
+  };
+}
+function getErrorOverlayStyle() {
+  return {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "12px",
+    backgroundColor: "rgba(0,0,0,0.7)",
+    zIndex: 15
+  };
+}
+function getErrorMessageStyle() {
+  return {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: "14px",
+    textAlign: "center",
+    maxWidth: "80%"
   };
 }
 function getLoadingOverlayStyle() {
@@ -638,11 +691,13 @@ function getSpeedMenuStyle() {
   return {
     position: "absolute",
     bottom: "48px",
-    right: "8px",
+    right: 0,
     backgroundColor: "rgba(20,20,20,0.95)",
     borderRadius: "8px",
     padding: "4px 0",
     minWidth: "100px",
+    maxHeight: "240px",
+    overflowY: "auto",
     zIndex: 30,
     backdropFilter: "blur(8px)",
     WebkitBackdropFilter: "blur(8px)",
@@ -783,6 +838,35 @@ function injectKeyframes() {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
+    [data-vplayer-root] {
+      border-radius: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.5;
+    }
+    [data-vplayer-root]:focus-visible {
+      outline: 2px solid rgba(255,255,255,0.2);
+      outline-offset: 2px;
+    }
+    [data-vplayer-root]:fullscreen,
+    [data-vplayer-root]:-webkit-full-screen {
+      width: 100% !important;
+      max-width: 100% !important;
+      border-radius: 0 !important;
+    }
+    [data-vplayer-root]:fullscreen [data-vplayer-aspect],
+    [data-vplayer-root]:-webkit-full-screen [data-vplayer-aspect] {
+      padding-top: 0 !important;
+      height: 100vh;
+    }
+    [data-vplayer-root]:fullscreen [data-vplayer-inner],
+    [data-vplayer-root]:-webkit-full-screen [data-vplayer-inner] {
+      position: static;
+    }
+    @media (pointer: coarse) {
+      [data-vplayer-volume-slider] {
+        display: none !important;
+      }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -792,9 +876,11 @@ import { Fragment, jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
 var DEFAULT_POSTER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1920' height='1080' viewBox='0 0 1920 1080'%3E%3Crect fill='%23111' width='1920' height='1080'/%3E%3Ctext x='50%25' y='50%25' dominantBaseline='central' textAnchor='middle' fontFamily='system-ui' fontSize='48' fill='%23333'%3EVideo%3C/text%3E%3C/svg%3E";
 var PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 var HIDE_CONTROLS_DELAY = 3e3;
+var VOLUME_STORAGE_KEY = "vplayer-volume";
 var SHORTCUTS = [
   ["Space / K", "Play / Pause"],
   ["\u2190 / \u2192", "Seek \xB15s"],
+  ["Shift+\u2190 / \u2192", "Prev / Next chapter"],
   ["\u2191 / \u2193", "Volume \xB110%"],
   ["F", "Fullscreen"],
   ["M", "Mute"],
@@ -818,15 +904,17 @@ function matchesKey(key, binding) {
   if (!binding) return false;
   return Array.isArray(binding) ? binding.includes(key) : binding === key;
 }
-function VPlayer({
+var VPlayer = forwardRef(function VPlayer2({
   src,
   poster,
   width = "100%",
   aspectRatio = "16:9",
   accentColor = "#e11d48",
   iconColor = "#ffffff",
+  initialTime,
   autoPlay = false,
   loop = false,
+  loopPlaylist = false,
   muted = false,
   title,
   className,
@@ -834,6 +922,8 @@ function VPlayer({
   onPlay,
   onPause,
   onEnded,
+  onError,
+  onSeek,
   onTimeUpdate,
   preload = "metadata",
   ariaLabel,
@@ -844,11 +934,30 @@ function VPlayer({
   onMilestone,
   onNext,
   onPrev,
+  activeIndex,
+  onIndexChange,
+  persistVolume = false,
+  onChapterChange,
+  onVolumeChange,
   keymap
-}) {
+}, ref) {
   const srcList = Array.isArray(src) ? src : [src];
   const isPlaylist = srcList.length > 1;
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [internalIndex, setInternalIndex] = useState(0);
+  const isControlled = activeIndex !== void 0;
+  const currentIndex = isControlled ? activeIndex : internalIndex;
+  const setCurrentIndex = useCallback(
+    (updater) => {
+      const nextIndex = typeof updater === "function" ? updater(currentIndex) : updater;
+      if (isControlled) {
+        onIndexChange?.(nextIndex);
+      } else {
+        setInternalIndex(nextIndex);
+        onIndexChange?.(nextIndex);
+      }
+    },
+    [isControlled, currentIndex, onIndexChange]
+  );
   const activeSrc = srcList[currentIndex] ?? srcList[0];
   const containerRef = useRef(null);
   const videoRef = useRef(null);
@@ -858,6 +967,8 @@ function VPlayer({
   const hasStartedRef = useRef(false);
   const milestonesFiredRef = useRef(/* @__PURE__ */ new Set());
   const playlistAdvancingRef = useRef(false);
+  const initialTimeAppliedRef = useRef(false);
+  const currentChapterRef = useRef(null);
   const parsed = parseVideoSource(activeSrc);
   const ratio = parseAspectRatio(aspectRatio);
   const isNative = parsed.type === "native";
@@ -865,19 +976,37 @@ function VPlayer({
     () => ({ ...DEFAULT_KEYMAP, ...keymap }),
     [keymap]
   );
-  const [state, setState] = useState({
-    isPlaying: false,
-    currentTime: 0,
-    duration: 0,
-    volume: muted ? 0 : 1,
-    isMuted: muted,
-    isFullscreen: false,
-    buffered: 0,
-    isLoading: false,
-    hasStarted: false,
-    showControls: true,
-    isFocused: false,
-    playbackRate: 1
+  const [state, setState] = useState(() => {
+    let volume = muted ? 0 : 1;
+    let isMuted = muted;
+    if (persistVolume && typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(VOLUME_STORAGE_KEY);
+        if (stored !== null) {
+          const vol = parseFloat(stored);
+          if (isFinite(vol) && vol >= 0 && vol <= 1) {
+            volume = vol;
+            isMuted = vol === 0;
+          }
+        }
+      } catch {
+      }
+    }
+    return {
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+      volume,
+      isMuted,
+      isFullscreen: false,
+      buffered: 0,
+      isLoading: false,
+      hasStarted: false,
+      showControls: true,
+      isFocused: false,
+      playbackRate: 1,
+      error: null
+    };
   });
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
@@ -892,6 +1021,16 @@ function VPlayer({
     injectKeyframes();
     setSupportsPip("pictureInPictureEnabled" in document);
   }, []);
+  useEffect(() => {
+    if (!persistVolume) return;
+    try {
+      localStorage.setItem(
+        VOLUME_STORAGE_KEY,
+        String(state.isMuted ? 0 : state.volume)
+      );
+    } catch {
+    }
+  }, [persistVolume, state.volume, state.isMuted]);
   useEffect(() => {
     isPlayingRef.current = state.isPlaying;
   }, [state.isPlaying]);
@@ -913,11 +1052,15 @@ function VPlayer({
     const handleFSChange = () => {
       setState((s) => ({
         ...s,
-        isFullscreen: !!document.fullscreenElement
+        isFullscreen: !!(document.fullscreenElement || document.webkitFullscreenElement)
       }));
     };
     document.addEventListener("fullscreenchange", handleFSChange);
-    return () => document.removeEventListener("fullscreenchange", handleFSChange);
+    document.addEventListener("webkitfullscreenchange", handleFSChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFSChange);
+      document.removeEventListener("webkitfullscreenchange", handleFSChange);
+    };
   }, []);
   useEffect(() => {
     setState((s) => ({
@@ -927,7 +1070,8 @@ function VPlayer({
       hasStarted: false,
       isPlaying: false,
       buffered: 0,
-      isLoading: false
+      isLoading: false,
+      error: null
     }));
     milestonesFiredRef.current = /* @__PURE__ */ new Set();
     setEmbedStarted(false);
@@ -958,12 +1102,17 @@ function VPlayer({
   const handleLoadedMetadata = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
+    if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current && initialTime < v.duration) {
+      v.currentTime = initialTime;
+      initialTimeAppliedRef.current = true;
+    }
     setState((s) => ({
       ...s,
       duration: v.duration,
+      currentTime: v.currentTime,
       isLoading: false
     }));
-  }, []);
+  }, [initialTime]);
   const handleTimeUpdate = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -981,7 +1130,21 @@ function VPlayer({
         }
       }
     }
-  }, [onTimeUpdate, onMilestone]);
+    if (onChapterChange && chapters && chapters.length > 0 && v.duration > 0) {
+      let current = null;
+      for (let i = chapters.length - 1; i >= 0; i--) {
+        if (v.currentTime >= chapters[i].time) {
+          current = chapters[i];
+          break;
+        }
+      }
+      const currentLabel = current?.label ?? null;
+      if (currentLabel !== currentChapterRef.current) {
+        currentChapterRef.current = currentLabel;
+        onChapterChange(current);
+      }
+    }
+  }, [onTimeUpdate, onMilestone, onChapterChange, chapters]);
   const handleProgress = useCallback(() => {
     const v = videoRef.current;
     if (!v || v.buffered.length === 0) return;
@@ -993,19 +1156,35 @@ function VPlayer({
   const handleWaiting = useCallback(() => {
     setState((s) => ({ ...s, isLoading: true }));
   }, []);
+  const handleDurationChange = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || !isFinite(v.duration)) return;
+    setState((s) => ({ ...s, duration: v.duration }));
+  }, []);
   const handleCanPlay = useCallback(() => {
     setState((s) => ({ ...s, isLoading: false }));
   }, []);
+  const handleError = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const error = v.error ?? null;
+    setState((s) => ({ ...s, error, isLoading: false }));
+    onError?.(error);
+  }, [onError]);
   const handleVideoEnded = useCallback(() => {
     if (isPlaylist && currentIndex < srcList.length - 1) {
       playlistAdvancingRef.current = true;
       setCurrentIndex((i) => i + 1);
       onNext?.();
+    } else if (isPlaylist && loopPlaylist) {
+      playlistAdvancingRef.current = true;
+      setCurrentIndex(0);
+      onNext?.();
     } else {
       setState((s) => ({ ...s, isPlaying: false, showControls: true }));
       onEnded?.();
     }
-  }, [isPlaylist, currentIndex, srcList.length, onNext, onEnded]);
+  }, [isPlaylist, currentIndex, srcList.length, loopPlaylist, onNext, onEnded]);
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -1044,8 +1223,9 @@ function VPlayer({
       const pct = clamp((e.clientX - rect.left) / rect.width, 0, 1);
       v.currentTime = pct * v.duration;
       setState((s) => ({ ...s, currentTime: v.currentTime }));
+      onSeek?.(v.currentTime);
     },
-    []
+    [onSeek]
   );
   const handleProgressMouseDown = useCallback(
     (e) => {
@@ -1062,39 +1242,51 @@ function VPlayer({
       };
       const onUp = () => {
         setIsDragging(false);
+        if (v) onSeek?.(v.currentTime);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    []
+    [onSeek]
   );
-  const handleProgressTouchStart = useCallback(
-    (e) => {
+  useEffect(() => {
+    const bar = progressRef.current;
+    if (!bar) return;
+    const onTouchStart = (e) => {
       e.preventDefault();
       setIsDragging(true);
       const v = videoRef.current;
-      const bar = progressRef.current;
-      if (!v || !bar) return;
+      if (!v) return;
       const rect = bar.getBoundingClientRect();
-      const onMove = (ev) => {
-        const touch = ev.touches[0];
-        if (!touch) return;
+      const touch = e.touches[0];
+      if (touch) {
         const pct = clamp((touch.clientX - rect.left) / rect.width, 0, 1);
+        v.currentTime = pct * v.duration;
+        setState((s) => ({ ...s, currentTime: v.currentTime }));
+      }
+      const onMove = (ev) => {
+        const t = ev.touches[0];
+        if (!t) return;
+        const pct = clamp((t.clientX - rect.left) / rect.width, 0, 1);
         v.currentTime = pct * v.duration;
         setState((s) => ({ ...s, currentTime: v.currentTime }));
       };
       const onEnd = () => {
         setIsDragging(false);
+        onSeek?.(v.currentTime);
         window.removeEventListener("touchmove", onMove);
         window.removeEventListener("touchend", onEnd);
       };
       window.addEventListener("touchmove", onMove, { passive: false });
       window.addEventListener("touchend", onEnd);
-    },
-    []
-  );
+    };
+    bar.addEventListener("touchstart", onTouchStart, { passive: false });
+    return () => {
+      bar.removeEventListener("touchstart", onTouchStart);
+    };
+  }, [onSeek]);
   const handleProgressHover = useCallback(
     (e) => {
       const bar = progressRef.current;
@@ -1112,11 +1304,13 @@ function VPlayer({
       v.muted = false;
       v.volume = state.volume > 0 ? state.volume : 1;
       setState((s) => ({ ...s, isMuted: false, volume: v.volume }));
+      onVolumeChange?.(v.volume, false);
     } else {
       v.muted = true;
       setState((s) => ({ ...s, isMuted: true }));
+      onVolumeChange?.(0, true);
     }
-  }, [state.volume]);
+  }, [state.volume, onVolumeChange]);
   const handleVolumeChange = useCallback(
     (e) => {
       const v = videoRef.current;
@@ -1127,14 +1321,20 @@ function VPlayer({
       v.volume = pct;
       v.muted = pct === 0;
       setState((s) => ({ ...s, volume: pct, isMuted: pct === 0 }));
+      onVolumeChange?.(pct, pct === 0);
     },
-    []
+    [onVolumeChange]
   );
   const toggleFullscreen = useCallback(() => {
     const c = containerRef.current;
+    const v = videoRef.current;
     if (!c) return;
     if (!document.fullscreenElement) {
-      c.requestFullscreen?.();
+      if (c.requestFullscreen) {
+        c.requestFullscreen();
+      } else if (v && v.webkitEnterFullscreen) {
+        v.webkitEnterFullscreen();
+      }
     } else {
       document.exitFullscreen?.();
     }
@@ -1161,15 +1361,31 @@ function VPlayer({
   const handleFocus = useCallback(() => {
     setState((s) => ({ ...s, isFocused: true }));
   }, []);
-  const handleBlur = useCallback(() => {
+  const handleBlur = useCallback((e) => {
+    if (containerRef.current?.contains(e.relatedTarget)) return;
     setState((s) => ({ ...s, isFocused: false }));
     setShowSpeedMenu(false);
+    setShowCCMenu(false);
   }, []);
   const handleKeyDown = useCallback(
     (e) => {
       if (!state.isFocused || !isNative) return;
       const v = videoRef.current;
       if (!v) return;
+      if (e.shiftKey && e.key === "ArrowLeft" && chapters && chapters.length > 0) {
+        e.preventDefault();
+        const target = [...chapters].reverse().find((ch) => ch.time < v.currentTime - 2);
+        v.currentTime = target ? target.time : 0;
+        resetHideTimer();
+        return;
+      }
+      if (e.shiftKey && e.key === "ArrowRight" && chapters && chapters.length > 0) {
+        e.preventDefault();
+        const target = chapters.find((ch) => ch.time > v.currentTime + 0.5);
+        if (target) v.currentTime = target.time;
+        resetHideTimer();
+        return;
+      }
       if (matchesKey(e.key, resolvedKeymap.play)) {
         e.preventDefault();
         togglePlay();
@@ -1184,10 +1400,12 @@ function VPlayer({
         v.volume = clamp(v.volume + 0.1, 0, 1);
         setState((s) => ({ ...s, volume: v.volume, isMuted: false }));
         v.muted = false;
+        onVolumeChange?.(v.volume, false);
       } else if (matchesKey(e.key, resolvedKeymap.volumeDown)) {
         e.preventDefault();
         v.volume = clamp(v.volume - 0.1, 0, 1);
         setState((s) => ({ ...s, volume: v.volume, isMuted: v.volume === 0 }));
+        onVolumeChange?.(v.volume, v.volume === 0);
       } else if (matchesKey(e.key, resolvedKeymap.fullscreen)) {
         e.preventDefault();
         toggleFullscreen();
@@ -1227,7 +1445,9 @@ function VPlayer({
       toggleFullscreen,
       toggleMute,
       setPlaybackRate,
-      resetHideTimer
+      resetHideTimer,
+      chapters,
+      onVolumeChange
     ]
   );
   const handleMouseMove = useCallback(() => {
@@ -1256,12 +1476,45 @@ function VPlayer({
   const showPoster = !state.hasStarted;
   const controlsVisible = state.showControls || !state.isPlaying || isDragging || showSpeedMenu || showCCMenu;
   const VolumeIcon = state.isMuted ? VolumeMuteIcon : state.volume < 0.5 ? VolumeLowIcon : VolumeHighIcon;
+  useImperativeHandle(
+    ref,
+    () => ({
+      play: () => {
+        const v = videoRef.current;
+        if (v) v.play().catch(() => {
+        });
+      },
+      pause: () => {
+        const v = videoRef.current;
+        if (v) v.pause();
+      },
+      seek: (time) => {
+        const v = videoRef.current;
+        if (v) v.currentTime = clamp(time, 0, v.duration || Infinity);
+      },
+      getCurrentTime: () => videoRef.current?.currentTime ?? 0,
+      getDuration: () => videoRef.current?.duration ?? 0,
+      getVolume: () => videoRef.current?.volume ?? state.volume,
+      setVolume: (volume) => {
+        const v = videoRef.current;
+        if (!v) return;
+        v.volume = clamp(volume, 0, 1);
+        v.muted = volume === 0;
+        setState((s) => ({ ...s, volume: v.volume, isMuted: v.muted }));
+      },
+      toggleMute: () => toggleMute(),
+      toggleFullscreen: () => toggleFullscreen(),
+      getVideoElement: () => videoRef.current
+    }),
+    [state.volume, toggleMute, toggleFullscreen]
+  );
   return /* @__PURE__ */ jsx2(
     "div",
     {
       ref: containerRef,
       className,
-      style: { ...getContainerStyle(width, state.isFocused), ...style },
+      "data-vplayer-root": "",
+      style: { ...getContainerStyle(width), ...style },
       tabIndex: 0,
       role: "region",
       "aria-label": ariaLabel || `Video player${title ? `: ${title}` : ""}`,
@@ -1271,7 +1524,7 @@ function VPlayer({
       onMouseMove: handleMouseMove,
       onMouseLeave: handleMouseLeave,
       onTouchStart: handleMouseMove,
-      children: /* @__PURE__ */ jsx2("div", { style: getAspectBoxStyle(ratio), children: /* @__PURE__ */ jsxs2("div", { style: getInnerStyle(), children: [
+      children: /* @__PURE__ */ jsx2("div", { "data-vplayer-aspect": "", style: getAspectBoxStyle(ratio), children: /* @__PURE__ */ jsxs2("div", { "data-vplayer-inner": "", style: getInnerStyle(), children: [
         isNative && /* @__PURE__ */ jsx2(
           "video",
           {
@@ -1285,11 +1538,13 @@ function VPlayer({
             playsInline: true,
             style: getVideoStyle(),
             onLoadedMetadata: handleLoadedMetadata,
+            onDurationChange: handleDurationChange,
             onTimeUpdate: handleTimeUpdate,
             onProgress: handleProgress,
             onWaiting: handleWaiting,
             onCanPlay: handleCanPlay,
             onEnded: handleVideoEnded,
+            onError: handleError,
             onClick: togglePlay,
             "aria-hidden": "true",
             children: tracks?.map((t, i) => /* @__PURE__ */ jsx2(
@@ -1316,14 +1571,15 @@ function VPlayer({
             loading: "lazy"
           }
         ),
-        showPoster && /* @__PURE__ */ jsxs2(
+        /* @__PURE__ */ jsxs2(
           "div",
           {
-            style: getPosterOverlayStyle(posterUrl),
-            onClick: startPlayback,
-            role: "button",
-            tabIndex: -1,
-            "aria-label": "Play video",
+            style: getPosterOverlayStyle(posterUrl, showPoster),
+            onClick: showPoster ? startPlayback : void 0,
+            role: showPoster ? "button" : void 0,
+            tabIndex: showPoster ? -1 : void 0,
+            "aria-label": showPoster ? "Play video" : void 0,
+            "aria-hidden": !showPoster,
             children: [
               /* @__PURE__ */ jsx2("div", { style: getPosterGradientStyle() }),
               /* @__PURE__ */ jsx2(
@@ -1331,6 +1587,7 @@ function VPlayer({
                 {
                   type: "button",
                   style: getPlayButtonLargeStyle(accentColor),
+                  tabIndex: showPoster ? 0 : -1,
                   onMouseEnter: (e) => {
                     e.currentTarget.style.transform = "scale(1.08)";
                   },
@@ -1344,7 +1601,11 @@ function VPlayer({
             ]
           }
         ),
-        state.isLoading && state.hasStarted && /* @__PURE__ */ jsx2("div", { style: getLoadingOverlayStyle(), children: /* @__PURE__ */ jsx2(SpinnerIcon, { size: 40, color: iconColor }) }),
+        state.isLoading && state.hasStarted && !state.error && /* @__PURE__ */ jsx2("div", { style: getLoadingOverlayStyle(), children: /* @__PURE__ */ jsx2(SpinnerIcon, { size: 40, color: iconColor }) }),
+        state.error && /* @__PURE__ */ jsxs2("div", { style: getErrorOverlayStyle(), children: [
+          /* @__PURE__ */ jsx2(ErrorIcon, { size: 40, color: iconColor }),
+          /* @__PURE__ */ jsx2("span", { style: getErrorMessageStyle(), children: state.error.code === 4 ? "This video format is not supported" : "Video could not be loaded" })
+        ] }),
         title && state.hasStarted && controlsVisible && /* @__PURE__ */ jsx2("div", { style: getTitleOverlayStyle(), children: title }),
         showShortcuts && /* @__PURE__ */ jsx2(
           "div",
@@ -1394,7 +1655,6 @@ function VPlayer({
               style: getProgressContainerStyle(),
               onClick: handleProgressClick,
               onMouseDown: handleProgressMouseDown,
-              onTouchStart: handleProgressTouchStart,
               onMouseMove: handleProgressHover,
               onMouseLeave: () => setHoverProgress(null),
               role: "slider",
@@ -1528,6 +1788,7 @@ function VPlayer({
                     showVolumeSlider && /* @__PURE__ */ jsxs2(
                       "div",
                       {
+                        "data-vplayer-volume-slider": "",
                         style: getVolumeSliderTrackStyle(),
                         onClick: handleVolumeChange,
                         role: "slider",
@@ -1539,6 +1800,7 @@ function VPlayer({
                         ),
                         tabIndex: -1,
                         children: [
+                          /* @__PURE__ */ jsx2("div", { style: getVolumeSliderTrackBarStyle() }),
                           /* @__PURE__ */ jsx2(
                             "div",
                             {
@@ -1706,7 +1968,7 @@ function VPlayer({
       ] }) })
     }
   );
-}
+});
 export {
   VPlayer,
   formatTime,

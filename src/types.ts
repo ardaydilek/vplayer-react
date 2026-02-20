@@ -28,10 +28,14 @@ export interface VPlayerProps {
   accentColor?: string;
   /** Icon color for play/pause and control icons */
   iconColor?: string;
+  /** Start playback at this timestamp (seconds) */
+  initialTime?: number;
   /** Whether the video should autoplay */
   autoPlay?: boolean;
   /** Whether the video should loop */
   loop?: boolean;
+  /** When true and in playlist mode, wraps back to the first video after the last one ends */
+  loopPlaylist?: boolean;
   /** Whether the video is muted by default */
   muted?: boolean;
   /** Title shown in the top-left overlay */
@@ -46,6 +50,10 @@ export interface VPlayerProps {
   onPause?: () => void;
   /** Callback when the video ends */
   onEnded?: () => void;
+  /** Callback when the video encounters an error */
+  onError?: (error: MediaError | null) => void;
+  /** Callback fired after the user completes a seek (mouseup/touchend on progress bar) */
+  onSeek?: (time: number) => void;
   /** Callback with current time updates */
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   /** Preload behavior for native video */
@@ -71,6 +79,16 @@ export interface VPlayerProps {
   onNext?: () => void;
   /** Callback when navigating to the previous playlist item */
   onPrev?: () => void;
+  /** Controlled playlist index. When provided, the player treats this as the source of truth. */
+  activeIndex?: number;
+  /** Callback when the playlist index changes (called for both user navigation and auto-advance) */
+  onIndexChange?: (index: number) => void;
+  /** Persist volume to localStorage so it survives page reloads */
+  persistVolume?: boolean;
+  /** Callback when the current chapter changes during playback */
+  onChapterChange?: (chapter: { time: number; label: string } | null) => void;
+  /** Callback when volume or mute state changes */
+  onVolumeChange?: (volume: number, muted: boolean) => void;
   /** Custom key bindings — set a binding to false to disable it */
   keymap?: VPlayerKeymap;
 }
@@ -88,6 +106,30 @@ export interface VideoState {
   showControls: boolean;
   isFocused: boolean;
   playbackRate: number;
+  error: MediaError | null;
+}
+
+export interface VPlayerHandle {
+  /** Start playback */
+  play: () => void;
+  /** Pause playback */
+  pause: () => void;
+  /** Seek to a specific time in seconds */
+  seek: (time: number) => void;
+  /** Get the current playback time in seconds */
+  getCurrentTime: () => number;
+  /** Get the total duration in seconds */
+  getDuration: () => number;
+  /** Get the current volume (0-1) */
+  getVolume: () => number;
+  /** Set volume (0-1) */
+  setVolume: (volume: number) => void;
+  /** Toggle mute */
+  toggleMute: () => void;
+  /** Toggle fullscreen */
+  toggleFullscreen: () => void;
+  /** Get the underlying HTMLVideoElement (for advanced use) */
+  getVideoElement: () => HTMLVideoElement | null;
 }
 
 export interface ParsedSource {
