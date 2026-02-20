@@ -244,66 +244,82 @@ export function getVolumeSliderContainerStyle(): React.CSSProperties {
   return {
     display: "flex",
     alignItems: "center",
-    gap: "4px",
     position: "relative",
   };
 }
 
-export function getVolumeSliderTrackStyle(): React.CSSProperties {
+export function getVolumePopupStyle(): React.CSSProperties {
   return {
-    width: "60px",
-    height: "20px",
-    backgroundColor: "transparent",
+    position: "absolute",
+    bottom: "36px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    backgroundColor: "rgba(20,20,20,0.95)",
+    borderRadius: "8px",
+    padding: "12px 10px 8px",
+    zIndex: 30,
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "6px",
+    minWidth: "40px",
+  };
+}
+
+export function getVolumeVerticalTrackStyle(): React.CSSProperties {
+  return {
+    width: "4px",
+    height: "80px",
+    backgroundColor: "rgba(255,255,255,0.2)",
     borderRadius: "2px",
     position: "relative",
     cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
   };
 }
 
-export function getVolumeSliderTrackBarStyle(): React.CSSProperties {
+export function getVolumeVerticalFillStyle(
+  volume: number,
+  accentColor: string
+): React.CSSProperties {
   return {
     position: "absolute",
     left: 0,
     right: 0,
-    height: "4px",
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: "2px",
-  };
-}
-
-export function getVolumeSliderFillStyle(
-  volume: number,
-  accentColor: string
-): React.CSSProperties {
-  return {
-    position: "absolute",
-    left: 0,
-    top: 0,
     bottom: 0,
-    width: `${volume * 100}%`,
+    height: `${volume * 100}%`,
     backgroundColor: accentColor,
     borderRadius: "2px",
   };
 }
 
-export function getVolumeSliderThumbStyle(
+export function getVolumeVerticalThumbStyle(
   volume: number,
   accentColor: string
 ): React.CSSProperties {
   return {
     position: "absolute",
-    left: `${volume * 100}%`,
-    top: "50%",
+    left: "50%",
+    bottom: `${volume * 100}%`,
     width: "12px",
     height: "12px",
     borderRadius: "50%",
     backgroundColor: accentColor,
-    transform: "translate(-50%, -50%)",
+    transform: "translate(-50%, 50%)",
     boxShadow: `0 0 4px ${accentColor}66`,
     zIndex: 1,
     pointerEvents: "none",
+  };
+}
+
+export function getVolumeLabelStyle(): React.CSSProperties {
+  return {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: "11px",
+    fontVariantNumeric: "tabular-nums",
+    whiteSpace: "nowrap",
   };
 }
 
@@ -360,20 +376,29 @@ export function getTitleOverlayStyle(): React.CSSProperties {
   };
 }
 
-export function getSpeedMenuStyle(): React.CSSProperties {
+export function getMenuOverlayStyle(): React.CSSProperties {
   return {
     position: "absolute",
-    bottom: "48px",
-    right: 0,
+    inset: 0,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "flex-end",
+    padding: "0 12px 56px 0",
+    zIndex: 35,
+  };
+}
+
+export function getMenuPanelStyle(): React.CSSProperties {
+  return {
     backgroundColor: "rgba(20,20,20,0.95)",
     borderRadius: "8px",
-    padding: "4px 0",
-    minWidth: "100px",
-    maxHeight: "240px",
+    padding: "6px 0",
+    minWidth: "120px",
+    maxHeight: "60%",
     overflowY: "auto",
-    zIndex: 30,
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
     border: "1px solid rgba(255,255,255,0.1)",
   };
 }
@@ -552,11 +577,6 @@ export function injectKeyframes(): void {
     [data-vplayer-root]:fullscreen [data-vplayer-inner],
     [data-vplayer-root]:-webkit-full-screen [data-vplayer-inner] {
       position: static;
-    }
-    @media (pointer: coarse) {
-      [data-vplayer-volume-slider] {
-        display: none !important;
-      }
     }
   `;
   document.head.appendChild(style);

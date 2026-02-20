@@ -2344,56 +2344,71 @@ var VPlayerReact = (() => {
     return {
       display: "flex",
       alignItems: "center",
-      gap: "4px",
       position: "relative"
     };
   }
-  function getVolumeSliderTrackStyle() {
+  function getVolumePopupStyle() {
     return {
-      width: "60px",
-      height: "20px",
-      backgroundColor: "transparent",
-      borderRadius: "2px",
-      position: "relative",
-      cursor: "pointer",
+      position: "absolute",
+      bottom: "36px",
+      left: "50%",
+      transform: "translateX(-50%)",
+      backgroundColor: "rgba(20,20,20,0.95)",
+      borderRadius: "8px",
+      padding: "12px 10px 8px",
+      zIndex: 30,
+      backdropFilter: "blur(8px)",
+      WebkitBackdropFilter: "blur(8px)",
+      border: "1px solid rgba(255,255,255,0.1)",
       display: "flex",
-      alignItems: "center"
+      flexDirection: "column",
+      alignItems: "center",
+      gap: "6px",
+      minWidth: "40px"
     };
   }
-  function getVolumeSliderTrackBarStyle() {
+  function getVolumeVerticalTrackStyle() {
+    return {
+      width: "4px",
+      height: "80px",
+      backgroundColor: "rgba(255,255,255,0.2)",
+      borderRadius: "2px",
+      position: "relative",
+      cursor: "pointer"
+    };
+  }
+  function getVolumeVerticalFillStyle(volume, accentColor) {
     return {
       position: "absolute",
       left: 0,
       right: 0,
-      height: "4px",
-      backgroundColor: "rgba(255,255,255,0.2)",
-      borderRadius: "2px"
-    };
-  }
-  function getVolumeSliderFillStyle(volume, accentColor) {
-    return {
-      position: "absolute",
-      left: 0,
-      top: 0,
       bottom: 0,
-      width: `${volume * 100}%`,
+      height: `${volume * 100}%`,
       backgroundColor: accentColor,
       borderRadius: "2px"
     };
   }
-  function getVolumeSliderThumbStyle(volume, accentColor) {
+  function getVolumeVerticalThumbStyle(volume, accentColor) {
     return {
       position: "absolute",
-      left: `${volume * 100}%`,
-      top: "50%",
+      left: "50%",
+      bottom: `${volume * 100}%`,
       width: "12px",
       height: "12px",
       borderRadius: "50%",
       backgroundColor: accentColor,
-      transform: "translate(-50%, -50%)",
+      transform: "translate(-50%, 50%)",
       boxShadow: `0 0 4px ${accentColor}66`,
       zIndex: 1,
       pointerEvents: "none"
+    };
+  }
+  function getVolumeLabelStyle() {
+    return {
+      color: "rgba(255,255,255,0.85)",
+      fontSize: "11px",
+      fontVariantNumeric: "tabular-nums",
+      whiteSpace: "nowrap"
     };
   }
   function getErrorOverlayStyle() {
@@ -2445,20 +2460,28 @@ var VPlayerReact = (() => {
       whiteSpace: "nowrap"
     };
   }
-  function getSpeedMenuStyle() {
+  function getMenuOverlayStyle() {
     return {
       position: "absolute",
-      bottom: "48px",
-      right: 0,
+      inset: 0,
+      backgroundColor: "rgba(0,0,0,0.3)",
+      display: "flex",
+      alignItems: "flex-end",
+      justifyContent: "flex-end",
+      padding: "0 12px 56px 0",
+      zIndex: 35
+    };
+  }
+  function getMenuPanelStyle() {
+    return {
       backgroundColor: "rgba(20,20,20,0.95)",
       borderRadius: "8px",
-      padding: "4px 0",
-      minWidth: "100px",
-      maxHeight: "240px",
+      padding: "6px 0",
+      minWidth: "120px",
+      maxHeight: "60%",
       overflowY: "auto",
-      zIndex: 30,
-      backdropFilter: "blur(8px)",
-      WebkitBackdropFilter: "blur(8px)",
+      backdropFilter: "blur(12px)",
+      WebkitBackdropFilter: "blur(12px)",
       border: "1px solid rgba(255,255,255,0.1)"
     };
   }
@@ -2493,21 +2516,6 @@ var VPlayerReact = (() => {
       whiteSpace: "nowrap",
       fontVariantNumeric: "tabular-nums",
       zIndex: 5
-    };
-  }
-  function getCCMenuStyle() {
-    return {
-      position: "absolute",
-      bottom: "48px",
-      right: "0",
-      backgroundColor: "rgba(20,20,20,0.95)",
-      borderRadius: "8px",
-      padding: "4px 0",
-      minWidth: "120px",
-      zIndex: 30,
-      backdropFilter: "blur(8px)",
-      WebkitBackdropFilter: "blur(8px)",
-      border: "1px solid rgba(255,255,255,0.1)"
     };
   }
   function getShortcutsOverlayStyle() {
@@ -2620,11 +2628,6 @@ var VPlayerReact = (() => {
     [data-vplayer-root]:-webkit-full-screen [data-vplayer-inner] {
       position: static;
     }
-    @media (pointer: coarse) {
-      [data-vplayer-volume-slider] {
-        display: none !important;
-      }
-    }
   `;
     document.head.appendChild(style);
   }
@@ -2727,6 +2730,16 @@ var VPlayerReact = (() => {
     const playlistAdvancingRef = (0, import_react.useRef)(false);
     const initialTimeAppliedRef = (0, import_react.useRef)(false);
     const currentChapterRef = (0, import_react.useRef)(null);
+    const activeChapters = (0, import_react.useMemo)(() => {
+      if (!chapters) return void 0;
+      if (chapters.length === 0) return void 0;
+      if (Array.isArray(chapters[0]) && Array.isArray(chapters[0])) {
+        const perTrack = chapters;
+        return perTrack[currentIndex] ?? void 0;
+      }
+      if (isPlaylist) return currentIndex === 0 ? chapters : void 0;
+      return chapters;
+    }, [chapters, currentIndex, isPlaylist]);
     const parsed = parseVideoSource(activeSrc);
     const ratio = parseAspectRatio(aspectRatio);
     const isNative = parsed.type === "native";
@@ -2832,6 +2845,8 @@ var VPlayerReact = (() => {
         error: null
       }));
       milestonesFiredRef.current = /* @__PURE__ */ new Set();
+      currentChapterRef.current = null;
+      setActiveTrack(null);
       setEmbedStarted(false);
       if (playlistAdvancingRef.current) {
         playlistAdvancingRef.current = false;
@@ -2850,13 +2865,27 @@ var VPlayerReact = (() => {
         }
       }
     }, [activeSrc]);
+    const defaultTrackAppliedRef = (0, import_react.useRef)(false);
+    (0, import_react.useEffect)(() => {
+      if (defaultTrackAppliedRef.current || !tracks?.length) return;
+      defaultTrackAppliedRef.current = true;
+      const defaultIdx = tracks.findIndex((t) => t.default);
+      if (defaultIdx !== -1) setActiveTrack(defaultIdx);
+    }, [tracks]);
     (0, import_react.useEffect)(() => {
       const v = videoRef.current;
-      if (!v || !tracks?.length) return;
-      Array.from(v.textTracks).forEach((track, i) => {
-        track.mode = i === activeTrack ? "showing" : "hidden";
-      });
-    }, [activeTrack, tracks]);
+      if (!v) return;
+      const applyModes = () => {
+        for (let i = 0; i < v.textTracks.length; i++) {
+          v.textTracks[i].mode = i === activeTrack ? "showing" : "disabled";
+        }
+      };
+      applyModes();
+      v.textTracks.addEventListener("change", applyModes);
+      return () => {
+        v.textTracks.removeEventListener("change", applyModes);
+      };
+    }, [activeTrack]);
     const handleLoadedMetadata = (0, import_react.useCallback)(() => {
       const v = videoRef.current;
       if (!v) return;
@@ -2876,7 +2905,9 @@ var VPlayerReact = (() => {
       if (!v) return;
       setState((s) => ({
         ...s,
-        currentTime: v.currentTime
+        currentTime: v.currentTime,
+        // Fallback: pick up duration if it wasn't captured by loadedmetadata/durationchange
+        duration: s.duration > 0 ? s.duration : isFinite(v.duration) ? v.duration : 0
       }));
       onTimeUpdate?.(v.currentTime, v.duration);
       if (onMilestone && v.duration > 0) {
@@ -2888,11 +2919,11 @@ var VPlayerReact = (() => {
           }
         }
       }
-      if (onChapterChange && chapters && chapters.length > 0 && v.duration > 0) {
+      if (onChapterChange && activeChapters && activeChapters.length > 0 && v.duration > 0) {
         let current = null;
-        for (let i = chapters.length - 1; i >= 0; i--) {
-          if (v.currentTime >= chapters[i].time) {
-            current = chapters[i];
+        for (let i = activeChapters.length - 1; i >= 0; i--) {
+          if (v.currentTime >= activeChapters[i].time) {
+            current = activeChapters[i];
             break;
           }
         }
@@ -2902,7 +2933,7 @@ var VPlayerReact = (() => {
           onChapterChange(current);
         }
       }
-    }, [onTimeUpdate, onMilestone, onChapterChange, chapters]);
+    }, [onTimeUpdate, onMilestone, onChapterChange, activeChapters]);
     const handleProgress = (0, import_react.useCallback)(() => {
       const v = videoRef.current;
       if (!v || v.buffered.length === 0) return;
@@ -3069,13 +3100,13 @@ var VPlayerReact = (() => {
         onVolumeChange?.(0, true);
       }
     }, [state.volume, onVolumeChange]);
-    const handleVolumeChange = (0, import_react.useCallback)(
+    const handleVolumeSliderClick = (0, import_react.useCallback)(
       (e) => {
         const v = videoRef.current;
         const target = e.currentTarget;
         if (!v) return;
         const rect = target.getBoundingClientRect();
-        const pct = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+        const pct = clamp((rect.bottom - e.clientY) / rect.height, 0, 1);
         v.volume = pct;
         v.muted = pct === 0;
         setState((s) => ({ ...s, volume: pct, isMuted: pct === 0 }));
@@ -3130,16 +3161,16 @@ var VPlayerReact = (() => {
         if (!state.isFocused || !isNative) return;
         const v = videoRef.current;
         if (!v) return;
-        if (e.shiftKey && e.key === "ArrowLeft" && chapters && chapters.length > 0) {
+        if (e.shiftKey && e.key === "ArrowLeft" && activeChapters && activeChapters.length > 0) {
           e.preventDefault();
-          const target = [...chapters].reverse().find((ch) => ch.time < v.currentTime - 2);
+          const target = [...activeChapters].reverse().find((ch) => ch.time < v.currentTime - 2);
           v.currentTime = target ? target.time : 0;
           resetHideTimer();
           return;
         }
-        if (e.shiftKey && e.key === "ArrowRight" && chapters && chapters.length > 0) {
+        if (e.shiftKey && e.key === "ArrowRight" && activeChapters && activeChapters.length > 0) {
           e.preventDefault();
-          const target = chapters.find((ch) => ch.time > v.currentTime + 0.5);
+          const target = activeChapters.find((ch) => ch.time > v.currentTime + 0.5);
           if (target) v.currentTime = target.time;
           resetHideTimer();
           return;
@@ -3204,7 +3235,7 @@ var VPlayerReact = (() => {
         toggleMute,
         setPlaybackRate,
         resetHideTimer,
-        chapters,
+        activeChapters,
         onVolumeChange
       ]
     );
@@ -3227,7 +3258,7 @@ var VPlayerReact = (() => {
       Math.floor(hoverProgress / 100 * previewThumbnails.count),
       previewThumbnails.count - 1
     ) : null;
-    const nearChapter = chapters && hoverProgress !== null ? chapters.find(
+    const nearChapter = activeChapters && hoverProgress !== null ? activeChapters.find(
       (ch) => state.duration > 0 && Math.abs(ch.time / state.duration * 100 - hoverProgress) < 2
     ) : void 0;
     const posterUrl = poster || DEFAULT_POSTER;
@@ -3405,6 +3436,86 @@ var VPlayerReact = (() => {
               )
             }
           ),
+          showCCMenu && tracks && tracks.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "div",
+            {
+              style: getMenuOverlayStyle(),
+              onClick: () => setShowCCMenu(false),
+              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                "div",
+                {
+                  style: getMenuPanelStyle(),
+                  onClick: (e) => e.stopPropagation(),
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        style: getSpeedMenuItemStyle(
+                          activeTrack === null,
+                          accentColor
+                        ),
+                        onClick: () => {
+                          setActiveTrack(null);
+                          setShowCCMenu(false);
+                        },
+                        children: "Off"
+                      }
+                    ),
+                    tracks.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        style: getSpeedMenuItemStyle(
+                          activeTrack === i,
+                          accentColor
+                        ),
+                        onClick: () => {
+                          setActiveTrack(i);
+                          setShowCCMenu(false);
+                        },
+                        children: t.label
+                      },
+                      i
+                    ))
+                  ]
+                }
+              )
+            }
+          ),
+          showSpeedMenu && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "div",
+            {
+              style: getMenuOverlayStyle(),
+              onClick: () => setShowSpeedMenu(false),
+              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                "div",
+                {
+                  style: getMenuPanelStyle(),
+                  onClick: (e) => e.stopPropagation(),
+                  children: PLAYBACK_RATES.map((rate) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                    "button",
+                    {
+                      type: "button",
+                      style: getSpeedMenuItemStyle(
+                        state.playbackRate === rate,
+                        accentColor
+                      ),
+                      onClick: () => setPlaybackRate(rate),
+                      onMouseEnter: (e) => {
+                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
+                      },
+                      onMouseLeave: (e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                      },
+                      children: rate === 1 ? "Normal" : `${rate}x`
+                    },
+                    rate
+                  ))
+                }
+              )
+            }
+          ),
           isNative && state.hasStarted && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlsBarStyle(controlsVisible), children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
               "div",
@@ -3438,7 +3549,7 @@ var VPlayerReact = (() => {
                             style: getProgressFillStyle(progress, accentColor)
                           }
                         ),
-                        chapters && state.duration > 0 && chapters.map((ch, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                        activeChapters && state.duration > 0 && activeChapters.map((ch, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                           "div",
                           {
                             style: getChapterMarkerStyle(
@@ -3520,69 +3631,66 @@ var VPlayerReact = (() => {
                     }
                   )
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-                  "div",
-                  {
-                    style: getVolumeSliderContainerStyle(),
-                    onMouseEnter: () => setShowVolumeSlider(true),
-                    onMouseLeave: () => setShowVolumeSlider(false),
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                        "button",
-                        {
-                          type: "button",
-                          style: getControlButtonStyle(),
-                          onClick: toggleMute,
-                          "aria-label": state.isMuted ? "Unmute" : "Mute",
-                          onMouseEnter: (e) => {
-                            e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
-                          },
-                          onMouseLeave: (e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                          },
-                          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(VolumeIcon, { size: 20, color: iconColor })
-                        }
-                      ),
-                      showVolumeSlider && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-                        "div",
-                        {
-                          "data-vplayer-volume-slider": "",
-                          style: getVolumeSliderTrackStyle(),
-                          onClick: handleVolumeChange,
-                          role: "slider",
-                          "aria-label": "Volume",
-                          "aria-valuemin": 0,
-                          "aria-valuemax": 100,
-                          "aria-valuenow": Math.round(
-                            (state.isMuted ? 0 : state.volume) * 100
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getVolumeSliderContainerStyle(), children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                    "button",
+                    {
+                      type: "button",
+                      style: getControlButtonStyle(),
+                      onClick: () => setShowVolumeSlider((v) => !v),
+                      onContextMenu: (e) => {
+                        e.preventDefault();
+                        toggleMute();
+                      },
+                      "aria-label": state.isMuted ? "Unmute" : "Mute",
+                      onMouseEnter: (e) => {
+                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
+                      },
+                      onMouseLeave: (e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                      },
+                      children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(VolumeIcon, { size: 20, color: iconColor })
+                    }
+                  ),
+                  showVolumeSlider && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getVolumePopupStyle(), children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                      "div",
+                      {
+                        style: getVolumeVerticalTrackStyle(),
+                        onClick: handleVolumeSliderClick,
+                        role: "slider",
+                        "aria-label": "Volume",
+                        "aria-valuemin": 0,
+                        "aria-valuemax": 100,
+                        "aria-valuenow": Math.round(
+                          (state.isMuted ? 0 : state.volume) * 100
+                        ),
+                        tabIndex: -1,
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                            "div",
+                            {
+                              style: getVolumeVerticalFillStyle(
+                                state.isMuted ? 0 : state.volume,
+                                accentColor
+                              )
+                            }
                           ),
-                          tabIndex: -1,
-                          children: [
-                            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getVolumeSliderTrackBarStyle() }),
-                            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                              "div",
-                              {
-                                style: getVolumeSliderFillStyle(
-                                  state.isMuted ? 0 : state.volume,
-                                  accentColor
-                                )
-                              }
-                            ),
-                            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                              "div",
-                              {
-                                style: getVolumeSliderThumbStyle(
-                                  state.isMuted ? 0 : state.volume,
-                                  accentColor
-                                )
-                              }
-                            )
-                          ]
-                        }
-                      )
-                    ]
-                  }
-                ),
+                          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                            "div",
+                            {
+                              style: getVolumeVerticalThumbStyle(
+                                state.isMuted ? 0 : state.volume,
+                                accentColor
+                              )
+                            }
+                          )
+                        ]
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: getVolumeLabelStyle(), children: state.isMuted ? "0%" : `${Math.round(state.volume * 100)}%` })
+                  ] })
+                ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: getTimeDisplayStyle(), children: [
                   formatTime(state.currentTime),
                   " / ",
@@ -3590,104 +3698,48 @@ var VPlayerReact = (() => {
                 ] })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlGroupStyle(), children: [
-                tracks && tracks.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { position: "relative" }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                    "button",
-                    {
-                      type: "button",
-                      style: getControlButtonStyle(),
-                      onClick: () => setShowCCMenu(!showCCMenu),
-                      "aria-label": "Captions",
-                      "aria-expanded": showCCMenu,
-                      children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                        CCIcon,
-                        {
-                          size: 18,
-                          color: activeTrack !== null ? accentColor : iconColor
-                        }
-                      )
-                    }
-                  ),
-                  showCCMenu && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getCCMenuStyle(), children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                      "button",
+                tracks && tracks.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                  "button",
+                  {
+                    type: "button",
+                    style: getControlButtonStyle(),
+                    onClick: () => setShowCCMenu(!showCCMenu),
+                    "aria-label": "Captions",
+                    "aria-expanded": showCCMenu,
+                    children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      CCIcon,
                       {
-                        type: "button",
-                        style: getSpeedMenuItemStyle(
-                          activeTrack === null,
-                          accentColor
-                        ),
-                        onClick: () => {
-                          setActiveTrack(null);
-                          setShowCCMenu(false);
-                        },
-                        children: "Off"
+                        size: 18,
+                        color: activeTrack !== null ? accentColor : iconColor
                       }
-                    ),
-                    tracks.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                      "button",
-                      {
-                        type: "button",
-                        style: getSpeedMenuItemStyle(
-                          activeTrack === i,
-                          accentColor
-                        ),
-                        onClick: () => {
-                          setActiveTrack(i);
-                          setShowCCMenu(false);
-                        },
-                        children: t.label
-                      },
-                      i
-                    ))
-                  ] })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { position: "relative" }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                    "button",
-                    {
-                      type: "button",
-                      style: {
-                        ...getControlButtonStyle(),
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        minWidth: "32px"
-                      },
-                      onClick: () => setShowSpeedMenu(!showSpeedMenu),
-                      "aria-label": "Playback speed",
-                      "aria-expanded": showSpeedMenu,
-                      onMouseEnter: (e) => {
-                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
-                      },
-                      onMouseLeave: (e) => {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                      },
-                      children: state.playbackRate === 1 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SettingsIcon, { size: 18, color: iconColor }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { color: accentColor }, children: [
-                        state.playbackRate,
-                        "x"
-                      ] })
-                    }
-                  ),
-                  showSpeedMenu && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getSpeedMenuStyle(), children: PLAYBACK_RATES.map((rate) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                    "button",
-                    {
-                      type: "button",
-                      style: getSpeedMenuItemStyle(
-                        state.playbackRate === rate,
-                        accentColor
-                      ),
-                      onClick: () => setPlaybackRate(rate),
-                      onMouseEnter: (e) => {
-                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
-                      },
-                      onMouseLeave: (e) => {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                      },
-                      children: rate === 1 ? "Normal" : `${rate}x`
+                    )
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                  "button",
+                  {
+                    type: "button",
+                    style: {
+                      ...getControlButtonStyle(),
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      minWidth: "32px"
                     },
-                    rate
-                  )) })
-                ] }),
+                    onClick: () => setShowSpeedMenu(!showSpeedMenu),
+                    "aria-label": "Playback speed",
+                    "aria-expanded": showSpeedMenu,
+                    onMouseEnter: (e) => {
+                      e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
+                    },
+                    onMouseLeave: (e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                    },
+                    children: state.playbackRate === 1 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SettingsIcon, { size: 18, color: iconColor }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { color: accentColor }, children: [
+                      state.playbackRate,
+                      "x"
+                    ] })
+                  }
+                ),
                 supportsPip && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                   "button",
                   {

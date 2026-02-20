@@ -57,11 +57,14 @@ interface VPlayerProps {
     }[];
     /** Callback when buffer progress changes (0–100) */
     onBuffer?: (percent: number) => void;
-    /** Chapter markers displayed on the progress bar */
+    /** Chapter markers displayed on the progress bar. Pass a nested array for per-track chapters in playlist mode. */
     chapters?: {
         time: number;
         label: string;
-    }[];
+    }[] | {
+        time: number;
+        label: string;
+    }[][];
     /** Thumbnail preview sprite sheet for hover scrubbing */
     previewThumbnails?: {
         src: string;

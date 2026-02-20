@@ -48,18 +48,19 @@ import {
   getControlButtonStyle,
   getTimeDisplayStyle,
   getVolumeSliderContainerStyle,
-  getVolumeSliderTrackStyle,
-  getVolumeSliderTrackBarStyle,
-  getVolumeSliderFillStyle,
-  getVolumeSliderThumbStyle,
+  getVolumePopupStyle,
+  getVolumeVerticalTrackStyle,
+  getVolumeVerticalFillStyle,
+  getVolumeVerticalThumbStyle,
+  getVolumeLabelStyle,
   getErrorOverlayStyle,
   getErrorMessageStyle,
   getLoadingOverlayStyle,
   getTitleOverlayStyle,
-  getSpeedMenuStyle,
+  getMenuOverlayStyle,
+  getMenuPanelStyle,
   getSpeedMenuItemStyle,
   getTooltipStyle,
-  getCCMenuStyle,
   getShortcutsOverlayStyle,
   getShortcutsBoxStyle,
   getShortcutRowStyle,
@@ -183,6 +184,20 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   const playlistAdvancingRef = useRef(false);
   const initialTimeAppliedRef = useRef(false);
   const currentChapterRef = useRef<string | null>(null);
+
+  // Resolve per-track chapters: if chapters is a nested array, pick the current track's chapters
+  const activeChapters = useMemo(() => {
+    if (!chapters) return undefined;
+    if (chapters.length === 0) return undefined;
+    // Check if it's a nested array (Chapter[][])
+    if (Array.isArray(chapters[0]) && Array.isArray((chapters as any[])[0])) {
+      const perTrack = chapters as { time: number; label: string }[][];
+      return perTrack[currentIndex] ?? undefined;
+    }
+    // Flat array — only show on first track in playlist mode, or always for single video
+    if (isPlaylist) return currentIndex === 0 ? (chapters as { time: number; label: string }[]) : undefined;
+    return chapters as { time: number; label: string }[];
+  }, [chapters, currentIndex, isPlaylist]);
 
   const parsed = parseVideoSource(activeSrc);
   const ratio = parseAspectRatio(aspectRatio);
@@ -309,6 +324,8 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       error: null,
     }));
     milestonesFiredRef.current = new Set();
+    currentChapterRef.current = null;
+    setActiveTrack(null);
     setEmbedStarted(false);
 
     if (playlistAdvancingRef.current) {
@@ -331,14 +348,32 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     }
   }, [activeSrc]);
 
+  // Initialize activeTrack from default track — only on first mount
+  const defaultTrackAppliedRef = useRef(false);
+  useEffect(() => {
+    if (defaultTrackAppliedRef.current || !tracks?.length) return;
+    defaultTrackAppliedRef.current = true;
+    const defaultIdx = tracks.findIndex((t) => t.default);
+    if (defaultIdx !== -1) setActiveTrack(defaultIdx);
+  }, [tracks]);
+
   // TextTrack API — switch active caption track
   useEffect(() => {
     const v = videoRef.current;
-    if (!v || !tracks?.length) return;
-    Array.from(v.textTracks).forEach((track, i) => {
-      track.mode = i === activeTrack ? "showing" : "hidden";
-    });
-  }, [activeTrack, tracks]);
+    if (!v) return;
+
+    const applyModes = () => {
+      for (let i = 0; i < v.textTracks.length; i++) {
+        v.textTracks[i].mode = i === activeTrack ? "showing" : "disabled";
+      }
+    };
+
+    applyModes();
+    v.textTracks.addEventListener("change", applyModes);
+    return () => {
+      v.textTracks.removeEventListener("change", applyModes);
+    };
+  }, [activeTrack]);
 
   // ---- Native Video Event Handlers ----
   const handleLoadedMetadata = useCallback(() => {
@@ -367,6 +402,8 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     setState((s) => ({
       ...s,
       currentTime: v.currentTime,
+      // Fallback: pick up duration if it wasn't captured by loadedmetadata/durationchange
+      duration: s.duration > 0 ? s.duration : (isFinite(v.duration) ? v.duration : 0),
     }));
     onTimeUpdate?.(v.currentTime, v.duration);
     if (onMilestone && v.duration > 0) {
@@ -378,11 +415,11 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
         }
       }
     }
-    if (onChapterChange && chapters && chapters.length > 0 && v.duration > 0) {
+    if (onChapterChange && activeChapters && activeChapters.length > 0 && v.duration > 0) {
       let current: { time: number; label: string } | null = null;
-      for (let i = chapters.length - 1; i >= 0; i--) {
-        if (v.currentTime >= chapters[i].time) {
-          current = chapters[i];
+      for (let i = activeChapters.length - 1; i >= 0; i--) {
+        if (v.currentTime >= activeChapters[i].time) {
+          current = activeChapters[i];
           break;
         }
       }
@@ -392,7 +429,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
         onChapterChange(current);
       }
     }
-  }, [onTimeUpdate, onMilestone, onChapterChange, chapters]);
+  }, [onTimeUpdate, onMilestone, onChapterChange, activeChapters]);
 
   const handleProgress = useCallback(() => {
     const v = videoRef.current;
@@ -587,13 +624,14 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     }
   }, [state.volume, onVolumeChange]);
 
-  const handleVolumeChange = useCallback(
+  const handleVolumeSliderClick = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
       const v = videoRef.current;
       const target = e.currentTarget;
       if (!v) return;
       const rect = target.getBoundingClientRect();
-      const pct = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+      // Vertical slider: bottom = 0%, top = 100%
+      const pct = clamp((rect.bottom - e.clientY) / rect.height, 0, 1);
       v.volume = pct;
       v.muted = pct === 0;
       setState((s) => ({ ...s, volume: pct, isMuted: pct === 0 }));
@@ -663,18 +701,18 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       if (!v) return;
 
       // Chapter navigation (Shift + Arrow) — must be before regular seek
-      if (e.shiftKey && e.key === "ArrowLeft" && chapters && chapters.length > 0) {
+      if (e.shiftKey && e.key === "ArrowLeft" && activeChapters && activeChapters.length > 0) {
         e.preventDefault();
-        const target = [...chapters]
+        const target = [...activeChapters]
           .reverse()
           .find((ch) => ch.time < v.currentTime - 2);
         v.currentTime = target ? target.time : 0;
         resetHideTimer();
         return;
       }
-      if (e.shiftKey && e.key === "ArrowRight" && chapters && chapters.length > 0) {
+      if (e.shiftKey && e.key === "ArrowRight" && activeChapters && activeChapters.length > 0) {
         e.preventDefault();
-        const target = chapters.find((ch) => ch.time > v.currentTime + 0.5);
+        const target = activeChapters.find((ch) => ch.time > v.currentTime + 0.5);
         if (target) v.currentTime = target.time;
         resetHideTimer();
         return;
@@ -740,7 +778,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       toggleMute,
       setPlaybackRate,
       resetHideTimer,
-      chapters,
+      activeChapters,
       onVolumeChange,
     ]
   );
@@ -777,8 +815,8 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
 
   // Chapter label near the hover position
   const nearChapter =
-    chapters && hoverProgress !== null
-      ? chapters.find(
+    activeChapters && hoverProgress !== null
+      ? activeChapters.find(
           (ch) =>
             state.duration > 0 &&
             Math.abs((ch.time / state.duration) * 100 - hoverProgress) < 2
@@ -989,6 +1027,86 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
             </div>
           )}
 
+          {/* ---- CC Menu Overlay ---- */}
+          {showCCMenu && tracks && tracks.length > 0 && (
+            <div
+              style={getMenuOverlayStyle()}
+              onClick={() => setShowCCMenu(false)}
+            >
+              <div
+                style={getMenuPanelStyle()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  style={getSpeedMenuItemStyle(
+                    activeTrack === null,
+                    accentColor
+                  )}
+                  onClick={() => {
+                    setActiveTrack(null);
+                    setShowCCMenu(false);
+                  }}
+                >
+                  Off
+                </button>
+                {tracks.map((t, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    style={getSpeedMenuItemStyle(
+                      activeTrack === i,
+                      accentColor
+                    )}
+                    onClick={() => {
+                      setActiveTrack(i);
+                      setShowCCMenu(false);
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ---- Speed Menu Overlay ---- */}
+          {showSpeedMenu && (
+            <div
+              style={getMenuOverlayStyle()}
+              onClick={() => setShowSpeedMenu(false)}
+            >
+              <div
+                style={getMenuPanelStyle()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {PLAYBACK_RATES.map((rate) => (
+                  <button
+                    key={rate}
+                    type="button"
+                    style={getSpeedMenuItemStyle(
+                      state.playbackRate === rate,
+                      accentColor
+                    )}
+                    onClick={() => setPlaybackRate(rate)}
+                    onMouseEnter={(e) => {
+                      (
+                        e.currentTarget as HTMLButtonElement
+                      ).style.backgroundColor = "rgba(255,255,255,0.08)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (
+                        e.currentTarget as HTMLButtonElement
+                      ).style.backgroundColor = "transparent";
+                    }}
+                  >
+                    {rate === 1 ? "Normal" : `${rate}x`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ---- Controls (native only) ---- */}
           {isNative && state.hasStarted && (
             <div style={getControlsBarStyle(controlsVisible)}>
@@ -1020,9 +1138,9 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                     style={getProgressFillStyle(progress, accentColor)}
                   />
                   {/* Chapter markers */}
-                  {chapters &&
+                  {activeChapters &&
                     state.duration > 0 &&
-                    chapters.map((ch, i) => (
+                    activeChapters.map((ch, i) => (
                       <div
                         key={i}
                         style={getChapterMarkerStyle(
@@ -1119,15 +1237,15 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                   )}
 
                   {/* Volume */}
-                  <div
-                    style={getVolumeSliderContainerStyle()}
-                    onMouseEnter={() => setShowVolumeSlider(true)}
-                    onMouseLeave={() => setShowVolumeSlider(false)}
-                  >
+                  <div style={getVolumeSliderContainerStyle()}>
                     <button
                       type="button"
                       style={getControlButtonStyle()}
-                      onClick={toggleMute}
+                      onClick={() => setShowVolumeSlider((v) => !v)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        toggleMute();
+                      }}
                       aria-label={state.isMuted ? "Unmute" : "Mute"}
                       onMouseEnter={(e) => {
                         (
@@ -1143,32 +1261,37 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                       <VolumeIcon size={20} color={iconColor} />
                     </button>
                     {showVolumeSlider && (
-                      <div
-                        data-vplayer-volume-slider=""
-                        style={getVolumeSliderTrackStyle()}
-                        onClick={handleVolumeChange}
-                        role="slider"
-                        aria-label="Volume"
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={Math.round(
-                          (state.isMuted ? 0 : state.volume) * 100
-                        )}
-                        tabIndex={-1}
-                      >
-                        <div style={getVolumeSliderTrackBarStyle()} />
+                      <div style={getVolumePopupStyle()}>
                         <div
-                          style={getVolumeSliderFillStyle(
-                            state.isMuted ? 0 : state.volume,
-                            accentColor
+                          style={getVolumeVerticalTrackStyle()}
+                          onClick={handleVolumeSliderClick}
+                          role="slider"
+                          aria-label="Volume"
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={Math.round(
+                            (state.isMuted ? 0 : state.volume) * 100
                           )}
-                        />
-                        <div
-                          style={getVolumeSliderThumbStyle(
-                            state.isMuted ? 0 : state.volume,
-                            accentColor
-                          )}
-                        />
+                          tabIndex={-1}
+                        >
+                          <div
+                            style={getVolumeVerticalFillStyle(
+                              state.isMuted ? 0 : state.volume,
+                              accentColor
+                            )}
+                          />
+                          <div
+                            style={getVolumeVerticalThumbStyle(
+                              state.isMuted ? 0 : state.volume,
+                              accentColor
+                            )}
+                          />
+                        </div>
+                        <span style={getVolumeLabelStyle()}>
+                          {state.isMuted
+                            ? "0%"
+                            : `${Math.round(state.volume * 100)}%`}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1185,116 +1308,51 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                 <div style={getControlGroupStyle()}>
                   {/* CC button */}
                   {tracks && tracks.length > 0 && (
-                    <div style={{ position: "relative" }}>
-                      <button
-                        type="button"
-                        style={getControlButtonStyle()}
-                        onClick={() => setShowCCMenu(!showCCMenu)}
-                        aria-label="Captions"
-                        aria-expanded={showCCMenu}
-                      >
-                        <CCIcon
-                          size={18}
-                          color={activeTrack !== null ? accentColor : iconColor}
-                        />
-                      </button>
-                      {showCCMenu && (
-                        <div style={getCCMenuStyle()}>
-                          <button
-                            type="button"
-                            style={getSpeedMenuItemStyle(
-                              activeTrack === null,
-                              accentColor
-                            )}
-                            onClick={() => {
-                              setActiveTrack(null);
-                              setShowCCMenu(false);
-                            }}
-                          >
-                            Off
-                          </button>
-                          {tracks.map((t, i) => (
-                            <button
-                              key={i}
-                              type="button"
-                              style={getSpeedMenuItemStyle(
-                                activeTrack === i,
-                                accentColor
-                              )}
-                              onClick={() => {
-                                setActiveTrack(i);
-                                setShowCCMenu(false);
-                              }}
-                            >
-                              {t.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      style={getControlButtonStyle()}
+                      onClick={() => setShowCCMenu(!showCCMenu)}
+                      aria-label="Captions"
+                      aria-expanded={showCCMenu}
+                    >
+                      <CCIcon
+                        size={18}
+                        color={activeTrack !== null ? accentColor : iconColor}
+                      />
+                    </button>
                   )}
 
                   {/* Speed */}
-                  <div style={{ position: "relative" }}>
-                    <button
-                      type="button"
-                      style={{
-                        ...getControlButtonStyle(),
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        minWidth: "32px",
-                      }}
-                      onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                      aria-label="Playback speed"
-                      aria-expanded={showSpeedMenu}
-                      onMouseEnter={(e) => {
-                        (
-                          e.currentTarget as HTMLButtonElement
-                        ).style.backgroundColor = "rgba(255,255,255,0.12)";
-                      }}
-                      onMouseLeave={(e) => {
-                        (
-                          e.currentTarget as HTMLButtonElement
-                        ).style.backgroundColor = "transparent";
-                      }}
-                    >
-                      {state.playbackRate === 1 ? (
-                        <SettingsIcon size={18} color={iconColor} />
-                      ) : (
-                        <span style={{ color: accentColor }}>
-                          {state.playbackRate}x
-                        </span>
-                      )}
-                    </button>
-                    {showSpeedMenu && (
-                      <div style={getSpeedMenuStyle()}>
-                        {PLAYBACK_RATES.map((rate) => (
-                          <button
-                            key={rate}
-                            type="button"
-                            style={getSpeedMenuItemStyle(
-                              state.playbackRate === rate,
-                              accentColor
-                            )}
-                            onClick={() => setPlaybackRate(rate)}
-                            onMouseEnter={(e) => {
-                              (
-                                e.currentTarget as HTMLButtonElement
-                              ).style.backgroundColor =
-                                "rgba(255,255,255,0.08)";
-                            }}
-                            onMouseLeave={(e) => {
-                              (
-                                e.currentTarget as HTMLButtonElement
-                              ).style.backgroundColor = "transparent";
-                            }}
-                          >
-                            {rate === 1 ? "Normal" : `${rate}x`}
-                          </button>
-                        ))}
-                      </div>
+                  <button
+                    type="button"
+                    style={{
+                      ...getControlButtonStyle(),
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      minWidth: "32px",
+                    }}
+                    onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                    aria-label="Playback speed"
+                    aria-expanded={showSpeedMenu}
+                    onMouseEnter={(e) => {
+                      (
+                        e.currentTarget as HTMLButtonElement
+                      ).style.backgroundColor = "rgba(255,255,255,0.12)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (
+                        e.currentTarget as HTMLButtonElement
+                      ).style.backgroundColor = "transparent";
+                    }}
+                  >
+                    {state.playbackRate === 1 ? (
+                      <SettingsIcon size={18} color={iconColor} />
+                    ) : (
+                      <span style={{ color: accentColor }}>
+                        {state.playbackRate}x
+                      </span>
                     )}
-                  </div>
+                  </button>
 
                   {/* PiP */}
                   {supportsPip && (
