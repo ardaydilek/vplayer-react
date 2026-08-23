@@ -57,7 +57,36 @@ export function parseVideoSource(src: string): ParsedSource {
     type: "native",
     videoId: "",
     embedUrl: src,
+    isHls: isHlsSource(src),
   };
+}
+
+/**
+ * True when the URL points to an HLS (.m3u8) playlist.
+ */
+export function isHlsSource(src: string): boolean {
+  return /\.m3u8($|\?|#)/i.test(src);
+}
+
+const MEDIA_EXTENSIONS =
+  /\.(mp4|webm|ogv|ogg|mov|m4v|mp3|m4a|aac|wav|flac|m3u8)($|\?|#)/i;
+
+/**
+ * Whether a URL is recognized as playable: a known platform link,
+ * a media file extension, or a blob/data URL.
+ */
+export function canPlayUrl(url: string): boolean {
+  if (typeof url !== "string" || url.length === 0) return false;
+  if (url.startsWith("blob:") || url.startsWith("data:")) return true;
+  if (parseVideoSource(url).type !== "native") return true;
+  return MEDIA_EXTENSIONS.test(url);
+}
+
+/**
+ * Escape a URL for safe interpolation into a CSS url("...") value.
+ */
+export function escapeCssUrl(url: string): string {
+  return url.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "");
 }
 
 /**

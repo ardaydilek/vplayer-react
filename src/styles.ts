@@ -1,4 +1,5 @@
 import type React from "react";
+import { escapeCssUrl } from "./utils";
 
 /**
  * All styles are inline CSS objects so the component is dependency-free.
@@ -60,7 +61,7 @@ export function getPosterOverlayStyle(
   return {
     position: "absolute",
     inset: 0,
-    backgroundImage: `url(${posterUrl})`,
+    backgroundImage: `url("${escapeCssUrl(posterUrl)}")`,
     backgroundSize: "cover",
     backgroundPosition: "center",
     display: "flex",
@@ -117,7 +118,10 @@ export function getControlsBarStyle(visible: boolean): React.CSSProperties {
     flexDirection: "column",
     gap: "8px",
     opacity: visible ? 1 : 0,
-    transition: "opacity 0.3s ease",
+    // visibility removes the hidden bar from the tab order; the transition
+    // delays it until the fade-out finishes (and lifts it instantly on show)
+    visibility: visible ? "visible" : "hidden",
+    transition: "opacity 0.3s ease, visibility 0.3s",
     pointerEvents: visible ? "auto" : "none",
     zIndex: 20,
   };
@@ -251,7 +255,9 @@ export function getVolumeSliderContainerStyle(): React.CSSProperties {
 export function getVolumePopupStyle(): React.CSSProperties {
   return {
     position: "absolute",
-    bottom: "36px",
+    // Touches the top of the volume button so the pointer can travel from
+    // button to popup without crossing a gap that would close it
+    bottom: "30px",
     left: "50%",
     transform: "translateX(-50%)",
     backgroundColor: "rgba(20,20,20,0.95)",
@@ -441,22 +447,6 @@ export function getTooltipStyle(x: number): React.CSSProperties {
   };
 }
 
-export function getCCMenuStyle(): React.CSSProperties {
-  return {
-    position: "absolute",
-    bottom: "48px",
-    right: "0",
-    backgroundColor: "rgba(20,20,20,0.95)",
-    borderRadius: "8px",
-    padding: "4px 0",
-    minWidth: "120px",
-    zIndex: 30,
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
-    border: "1px solid rgba(255,255,255,0.1)",
-  };
-}
-
 export function getShortcutsOverlayStyle(): React.CSSProperties {
   return {
     position: "absolute",
@@ -532,7 +522,7 @@ export function getPreviewThumbnailStyle(
     transform: "translateX(-50%)",
     width: `${thumb.width}px`,
     height: `${thumb.height}px`,
-    backgroundImage: `url(${thumb.src})`,
+    backgroundImage: `url("${escapeCssUrl(thumb.src)}")`,
     backgroundPosition: `-${frameIndex * thumb.width}px 0`,
     backgroundSize: `${thumb.width * thumb.count}px ${thumb.height}px`,
     backgroundRepeat: "no-repeat",

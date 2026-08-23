@@ -1,3 +1,4 @@
+"use client";
 "use strict";
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -20,8 +21,10 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
-  VPlayer: () => VPlayer,
+  VPlayer: () => VPlayer2,
+  canPlayUrl: () => canPlayUrl,
   formatTime: () => formatTime,
+  isHlsSource: () => isHlsSource,
   parseAspectRatio: () => parseAspectRatio,
   parseVideoSource: () => parseVideoSource
 });
@@ -75,8 +78,22 @@ function parseVideoSource(src) {
   return {
     type: "native",
     videoId: "",
-    embedUrl: src
+    embedUrl: src,
+    isHls: isHlsSource(src)
   };
+}
+function isHlsSource(src) {
+  return /\.m3u8($|\?|#)/i.test(src);
+}
+var MEDIA_EXTENSIONS = /\.(mp4|webm|ogv|ogg|mov|m4v|mp3|m4a|aac|wav|flac|m3u8)($|\?|#)/i;
+function canPlayUrl(url) {
+  if (typeof url !== "string" || url.length === 0) return false;
+  if (url.startsWith("blob:") || url.startsWith("data:")) return true;
+  if (parseVideoSource(url).type !== "native") return true;
+  return MEDIA_EXTENSIONS.test(url);
+}
+function escapeCssUrl(url) {
+  return url.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "");
 }
 function formatTime(seconds) {
   if (!seconds || !isFinite(seconds)) return "0:00";
@@ -447,7 +464,7 @@ function getPosterOverlayStyle(posterUrl, visible) {
   return {
     position: "absolute",
     inset: 0,
-    backgroundImage: `url(${posterUrl})`,
+    backgroundImage: `url("${escapeCssUrl(posterUrl)}")`,
     backgroundSize: "cover",
     backgroundPosition: "center",
     display: "flex",
@@ -497,7 +514,10 @@ function getControlsBarStyle(visible) {
     flexDirection: "column",
     gap: "8px",
     opacity: visible ? 1 : 0,
-    transition: "opacity 0.3s ease",
+    // visibility removes the hidden bar from the tab order; the transition
+    // delays it until the fade-out finishes (and lifts it instantly on show)
+    visibility: visible ? "visible" : "hidden",
+    transition: "opacity 0.3s ease, visibility 0.3s",
     pointerEvents: visible ? "auto" : "none",
     zIndex: 20
   };
@@ -613,7 +633,9 @@ function getVolumeSliderContainerStyle() {
 function getVolumePopupStyle() {
   return {
     position: "absolute",
-    bottom: "36px",
+    // Touches the top of the volume button so the pointer can travel from
+    // button to popup without crossing a gap that would close it
+    bottom: "30px",
     left: "50%",
     transform: "translateX(-50%)",
     backgroundColor: "rgba(20,20,20,0.95)",
@@ -847,7 +869,7 @@ function getPreviewThumbnailStyle(x, thumb, frameIndex) {
     transform: "translateX(-50%)",
     width: `${thumb.width}px`,
     height: `${thumb.height}px`,
-    backgroundImage: `url(${thumb.src})`,
+    backgroundImage: `url("${escapeCssUrl(thumb.src)}")`,
     backgroundPosition: `-${frameIndex * thumb.width}px 0`,
     backgroundSize: `${thumb.width * thumb.count}px ${thumb.height}px`,
     backgroundRepeat: "no-repeat",
@@ -898,20 +920,23 @@ function injectKeyframes() {
 // src/VPlayer.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
 var DEFAULT_POSTER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1920' height='1080' viewBox='0 0 1920 1080'%3E%3Crect fill='%23111' width='1920' height='1080'/%3E%3Ctext x='50%25' y='50%25' dominantBaseline='central' textAnchor='middle' fontFamily='system-ui' fontSize='48' fill='%23333'%3EVideo%3C/text%3E%3C/svg%3E";
-var PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-var HIDE_CONTROLS_DELAY = 3e3;
+var DEFAULT_PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+var DEFAULT_HIDE_CONTROLS_DELAY = 3e3;
+var HIDE_ON_LEAVE_DELAY = 800;
 var VOLUME_STORAGE_KEY = "vplayer-volume";
-var SHORTCUTS = [
-  ["Space / K", "Play / Pause"],
-  ["\u2190 / \u2192", "Seek \xB15s"],
-  ["Shift+\u2190 / \u2192", "Prev / Next chapter"],
-  ["\u2191 / \u2193", "Volume \xB110%"],
-  ["F", "Fullscreen"],
-  ["M", "Mute"],
-  ["0\u20139", "Seek to 0%\u201390%"],
-  ["< / >", "Speed down / up"],
-  ["?", "Toggle shortcuts"]
-];
+function getShortcuts(seekStep, volumeStep) {
+  return [
+    ["Space / K", "Play / Pause"],
+    ["\u2190 / \u2192", `Seek \xB1${seekStep}s`],
+    ["Shift+\u2190 / \u2192", "Prev / Next chapter"],
+    ["\u2191 / \u2193", `Volume \xB1${Math.round(volumeStep * 100)}%`],
+    ["F", "Fullscreen"],
+    ["M", "Mute"],
+    ["0\u20139", "Seek to 0%\u201390%"],
+    ["< / >", "Speed down / up"],
+    ["?", "Toggle shortcuts"]
+  ];
+}
 var DEFAULT_KEYMAP = {
   play: [" ", "k"],
   mute: "m",
@@ -928,7 +953,7 @@ function matchesKey(key, binding) {
   if (!binding) return false;
   return Array.isArray(binding) ? binding.includes(key) : binding === key;
 }
-var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
+var VPlayerBase = (0, import_react.forwardRef)(function VPlayer({
   src,
   poster,
   width = "100%",
@@ -963,7 +988,27 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
   persistVolume = false,
   onChapterChange,
   onVolumeChange,
-  keymap
+  keymap,
+  playing,
+  volume: volumeProp,
+  playbackRate: playbackRateProp,
+  playbackRates,
+  seekStep = 5,
+  volumeStep = 0.1,
+  hideControlsDelay = DEFAULT_HIDE_CONTROLS_DELAY,
+  showControls: forceShowControls = false,
+  endTime,
+  crossOrigin,
+  disableRemotePlayback = false,
+  disablePictureInPicture = false,
+  captionStyle,
+  onReady,
+  onStart,
+  onRateChange,
+  onDurationChange,
+  onWaiting,
+  onEnterPiP,
+  onLeavePiP
 }, ref) {
   const srcList = Array.isArray(src) ? src : [src];
   const isPlaylist = srcList.length > 1;
@@ -982,7 +1027,8 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
     },
     [isControlled, currentIndex, onIndexChange]
   );
-  const activeSrc = srcList[currentIndex] ?? srcList[0];
+  const activeSrc = srcList[currentIndex] ?? srcList[0] ?? "";
+  const hasSource = typeof activeSrc === "string" && activeSrc.length > 0;
   const containerRef = (0, import_react.useRef)(null);
   const videoRef = (0, import_react.useRef)(null);
   const progressRef = (0, import_react.useRef)(null);
@@ -993,6 +1039,19 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
   const playlistAdvancingRef = (0, import_react.useRef)(false);
   const initialTimeAppliedRef = (0, import_react.useRef)(false);
   const currentChapterRef = (0, import_react.useRef)(null);
+  const readyFiredRef = (0, import_react.useRef)(false);
+  const startFiredRef = (0, import_react.useRef)(false);
+  const endTimeFiredRef = (0, import_react.useRef)(false);
+  const clipEndPauseRef = (0, import_react.useRef)(false);
+  const dragCleanupRef = (0, import_react.useRef)(null);
+  const mediaSettingsRef = (0, import_react.useRef)({ volume: 1, muted: false, rate: 1 });
+  const prevPlayingRef = (0, import_react.useRef)(void 0);
+  const controlsBarRef = (0, import_react.useRef)(null);
+  const instanceId = (0, import_react.useId)();
+  const onSeekRef = (0, import_react.useRef)(onSeek);
+  (0, import_react.useEffect)(() => {
+    onSeekRef.current = onSeek;
+  }, [onSeek]);
   const activeChapters = (0, import_react.useMemo)(() => {
     if (!chapters) return void 0;
     if (chapters.length === 0) return void 0;
@@ -1010,6 +1069,10 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
     () => ({ ...DEFAULT_KEYMAP, ...keymap }),
     [keymap]
   );
+  const resolvedRates = (0, import_react.useMemo)(
+    () => playbackRates && playbackRates.length > 0 ? playbackRates : DEFAULT_PLAYBACK_RATES,
+    [playbackRates]
+  );
   const [state, setState] = (0, import_react.useState)(() => {
     let volume = muted ? 0 : 1;
     let isMuted = muted;
@@ -1020,7 +1083,7 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
           const vol = parseFloat(stored);
           if (isFinite(vol) && vol >= 0 && vol <= 1) {
             volume = vol;
-            isMuted = vol === 0;
+            isMuted = muted || vol === 0;
           }
         }
       } catch {
@@ -1051,37 +1114,71 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
   const [embedStarted, setEmbedStarted] = (0, import_react.useState)(false);
   const [supportsPip, setSupportsPip] = (0, import_react.useState)(false);
   const [activeTrack, setActiveTrack] = (0, import_react.useState)(null);
+  const [hlsUnsupported, setHlsUnsupported] = (0, import_react.useState)(false);
   (0, import_react.useEffect)(() => {
     injectKeyframes();
-    setSupportsPip("pictureInPictureEnabled" in document);
+    setSupportsPip(!!document.pictureInPictureEnabled);
   }, []);
   (0, import_react.useEffect)(() => {
-    if (!persistVolume) return;
-    try {
-      localStorage.setItem(
-        VOLUME_STORAGE_KEY,
-        String(state.isMuted ? 0 : state.volume)
-      );
-    } catch {
+    if (!parsed.isHls) {
+      setHlsUnsupported(false);
+      return;
     }
+    const probe = document.createElement("video");
+    setHlsUnsupported(
+      probe.canPlayType("application/vnd.apple.mpegurl") === "" && probe.canPlayType("application/x-mpegURL") === ""
+    );
+  }, [parsed.isHls]);
+  const pendingVolumeWriteRef = (0, import_react.useRef)(null);
+  (0, import_react.useEffect)(() => {
+    if (!persistVolume) return;
+    pendingVolumeWriteRef.current = String(state.isMuted ? 0 : state.volume);
+    const id = setTimeout(() => {
+      try {
+        if (pendingVolumeWriteRef.current !== null) {
+          localStorage.setItem(VOLUME_STORAGE_KEY, pendingVolumeWriteRef.current);
+        }
+      } catch {
+      }
+      pendingVolumeWriteRef.current = null;
+    }, 250);
+    return () => clearTimeout(id);
   }, [persistVolume, state.volume, state.isMuted]);
+  (0, import_react.useEffect)(() => {
+    return () => {
+      if (pendingVolumeWriteRef.current !== null) {
+        try {
+          localStorage.setItem(VOLUME_STORAGE_KEY, pendingVolumeWriteRef.current);
+        } catch {
+        }
+      }
+    };
+  }, []);
   (0, import_react.useEffect)(() => {
     isPlayingRef.current = state.isPlaying;
   }, [state.isPlaying]);
   (0, import_react.useEffect)(() => {
     hasStartedRef.current = state.hasStarted;
   }, [state.hasStarted]);
+  (0, import_react.useEffect)(() => {
+    mediaSettingsRef.current = {
+      volume: state.volume,
+      muted: state.isMuted,
+      rate: state.playbackRate
+    };
+  }, [state.volume, state.isMuted, state.playbackRate]);
   const resetHideTimer = (0, import_react.useCallback)(() => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    setState((s) => ({ ...s, showControls: true }));
-    if (isPlayingRef.current && hasStartedRef.current) {
+    setState((s) => s.showControls ? s : { ...s, showControls: true });
+    if (!forceShowControls && isPlayingRef.current && hasStartedRef.current) {
       hideTimerRef.current = setTimeout(() => {
+        if (controlsBarRef.current?.contains(document.activeElement)) return;
         setState((s) => ({ ...s, showControls: false }));
         setShowSpeedMenu(false);
         setShowVolumeSlider(false);
-      }, HIDE_CONTROLS_DELAY);
+      }, hideControlsDelay);
     }
-  }, []);
+  }, [forceShowControls, hideControlsDelay]);
   (0, import_react.useEffect)(() => {
     const handleFSChange = () => {
       setState((s) => ({
@@ -1109,6 +1206,11 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
     }));
     milestonesFiredRef.current = /* @__PURE__ */ new Set();
     currentChapterRef.current = null;
+    readyFiredRef.current = false;
+    startFiredRef.current = false;
+    endTimeFiredRef.current = false;
+    clipEndPauseRef.current = false;
+    prevPlayingRef.current = void 0;
     setActiveTrack(null);
     setEmbedStarted(false);
     if (playlistAdvancingRef.current) {
@@ -1116,15 +1218,9 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
       const v = videoRef.current;
       if (v) {
         setState((s) => ({ ...s, hasStarted: true, isLoading: true }));
-        const attemptPlay = () => {
-          v.play().then(
-            () => setState((s) => ({ ...s, isPlaying: true, isLoading: false }))
-          ).catch(() => setState((s) => ({ ...s, isPlaying: false })));
-        };
-        v.addEventListener("canplay", attemptPlay, { once: true });
-        return () => {
-          v.removeEventListener("canplay", attemptPlay);
-        };
+        v.play().catch(
+          () => setState((s) => ({ ...s, isPlaying: false, isLoading: false }))
+        );
       }
     }
   }, [activeSrc]);
@@ -1137,18 +1233,95 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
   }, [tracks]);
   (0, import_react.useEffect)(() => {
     const v = videoRef.current;
-    if (!v) return;
+    if (!v || !v.textTracks) return;
     const applyModes = () => {
       for (let i = 0; i < v.textTracks.length; i++) {
         v.textTracks[i].mode = i === activeTrack ? "showing" : "disabled";
       }
     };
     applyModes();
+    if (typeof v.textTracks.addEventListener !== "function") return;
     v.textTracks.addEventListener("change", applyModes);
     return () => {
       v.textTracks.removeEventListener("change", applyModes);
     };
   }, [activeTrack]);
+  (0, import_react.useEffect)(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const handleEnter = () => onEnterPiP?.();
+    const handleLeave = () => onLeavePiP?.();
+    v.addEventListener("enterpictureinpicture", handleEnter);
+    v.addEventListener("leavepictureinpicture", handleLeave);
+    return () => {
+      v.removeEventListener("enterpictureinpicture", handleEnter);
+      v.removeEventListener("leavepictureinpicture", handleLeave);
+    };
+  }, [onEnterPiP, onLeavePiP, isNative, hasSource]);
+  (0, import_react.useEffect)(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if ("disableRemotePlayback" in v) v.disableRemotePlayback = disableRemotePlayback;
+    if ("disablePictureInPicture" in v) v.disablePictureInPicture = disablePictureInPicture;
+  }, [disableRemotePlayback, disablePictureInPicture, isNative, hasSource]);
+  (0, import_react.useEffect)(() => {
+    if (playing === void 0 || playing === prevPlayingRef.current) {
+      prevPlayingRef.current = playing;
+      return;
+    }
+    prevPlayingRef.current = playing;
+    const v = videoRef.current;
+    if (!v || !isNative) return;
+    if (playing) {
+      setState((s) => ({ ...s, hasStarted: true }));
+      v.play().catch(() => setState((s) => ({ ...s, isPlaying: false })));
+    } else {
+      v.pause();
+    }
+  }, [playing, isNative, activeSrc]);
+  (0, import_react.useEffect)(() => {
+    if (volumeProp === void 0) return;
+    const vol = clamp(volumeProp, 0, 1);
+    const v = videoRef.current;
+    if (v) {
+      v.volume = vol;
+      if (vol === 0) v.muted = true;
+    }
+    setState((s) => ({
+      ...s,
+      volume: vol,
+      isMuted: vol === 0 ? true : s.isMuted
+    }));
+  }, [volumeProp]);
+  const prevMutedRef = (0, import_react.useRef)(muted);
+  (0, import_react.useEffect)(() => {
+    if (muted === prevMutedRef.current) return;
+    prevMutedRef.current = muted;
+    setState((s) => ({ ...s, isMuted: muted }));
+  }, [muted]);
+  (0, import_react.useEffect)(() => {
+    if (playbackRateProp === void 0) return;
+    const v = videoRef.current;
+    if (v) v.playbackRate = playbackRateProp;
+    setState((s) => ({ ...s, playbackRate: playbackRateProp }));
+  }, [playbackRateProp]);
+  (0, import_react.useEffect)(() => {
+    return () => {
+      dragCleanupRef.current?.();
+    };
+  }, []);
+  const anyMenuOpen = showSpeedMenu || showCCMenu || showVolumeSlider;
+  const prevMenuOpenRef = (0, import_react.useRef)(false);
+  (0, import_react.useEffect)(() => {
+    const wasOpen = prevMenuOpenRef.current;
+    prevMenuOpenRef.current = anyMenuOpen;
+    if (wasOpen && !anyMenuOpen) {
+      const c = containerRef.current;
+      if (c && !c.contains(document.activeElement)) {
+        c.focus({ preventScroll: true });
+      }
+    }
+  }, [anyMenuOpen]);
   const handleLoadedMetadata = (0, import_react.useCallback)(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -1156,9 +1329,13 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
       v.currentTime = initialTime;
       initialTimeAppliedRef.current = true;
     }
+    const settings = mediaSettingsRef.current;
+    v.volume = settings.volume;
+    if (v.playbackRate !== settings.rate) v.playbackRate = settings.rate;
     setState((s) => ({
       ...s,
-      duration: v.duration,
+      // Live streams report Infinity; keep state.duration finite
+      duration: isFinite(v.duration) ? v.duration : 0,
       currentTime: v.currentTime,
       isLoading: false
     }));
@@ -1173,6 +1350,16 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
       duration: s.duration > 0 ? s.duration : isFinite(v.duration) ? v.duration : 0
     }));
     onTimeUpdate?.(v.currentTime, v.duration);
+    if (endTime && endTime > 0) {
+      if (!endTimeFiredRef.current && v.currentTime >= endTime) {
+        endTimeFiredRef.current = true;
+        clipEndPauseRef.current = true;
+        v.pause();
+        onEnded?.();
+      } else if (endTimeFiredRef.current && v.currentTime < endTime - 1) {
+        endTimeFiredRef.current = false;
+      }
+    }
     if (onMilestone && v.duration > 0) {
       const pct = v.currentTime / v.duration * 100;
       for (const milestone of [25, 50, 75, 100]) {
@@ -1196,7 +1383,7 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
         onChapterChange(current);
       }
     }
-  }, [onTimeUpdate, onMilestone, onChapterChange, activeChapters]);
+  }, [onTimeUpdate, onMilestone, onChapterChange, activeChapters, endTime, onEnded]);
   const handleProgress = (0, import_react.useCallback)(() => {
     const v = videoRef.current;
     if (!v || v.buffered.length === 0) return;
@@ -1207,15 +1394,56 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
   }, [onBuffer]);
   const handleWaiting = (0, import_react.useCallback)(() => {
     setState((s) => ({ ...s, isLoading: true }));
-  }, []);
+    onWaiting?.();
+  }, [onWaiting]);
   const handleDurationChange = (0, import_react.useCallback)(() => {
     const v = videoRef.current;
     if (!v || !isFinite(v.duration)) return;
     setState((s) => ({ ...s, duration: v.duration }));
-  }, []);
+    onDurationChange?.(v.duration);
+  }, [onDurationChange]);
   const handleCanPlay = (0, import_react.useCallback)(() => {
     setState((s) => ({ ...s, isLoading: false }));
-  }, []);
+    if (!readyFiredRef.current) {
+      readyFiredRef.current = true;
+      onReady?.();
+    }
+  }, [onReady]);
+  const handleVideoPlay = (0, import_react.useCallback)(() => {
+    const v = videoRef.current;
+    if (endTime && endTimeFiredRef.current && v && v.currentTime >= endTime) {
+      v.currentTime = initialTime && initialTime < endTime ? initialTime : 0;
+      endTimeFiredRef.current = false;
+    }
+    isPlayingRef.current = true;
+    hasStartedRef.current = true;
+    setState((s) => ({ ...s, isPlaying: true, hasStarted: true }));
+    if (!startFiredRef.current) {
+      startFiredRef.current = true;
+      onStart?.();
+    }
+    onPlay?.();
+    resetHideTimer();
+  }, [onPlay, onStart, resetHideTimer, endTime, initialTime]);
+  const handleVideoPause = (0, import_react.useCallback)(() => {
+    const v = videoRef.current;
+    isPlayingRef.current = false;
+    setState((s) => ({ ...s, isPlaying: false, showControls: true }));
+    if (v?.ended) return;
+    if (clipEndPauseRef.current) {
+      clipEndPauseRef.current = false;
+      return;
+    }
+    onPause?.();
+  }, [onPause]);
+  const handleRateChangeEvent = (0, import_react.useCallback)(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    setState(
+      (s) => s.playbackRate === v.playbackRate ? s : { ...s, playbackRate: v.playbackRate }
+    );
+    onRateChange?.(v.playbackRate);
+  }, [onRateChange]);
   const handleError = (0, import_react.useCallback)(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -1224,6 +1452,10 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
     onError?.(error);
   }, [onError]);
   const handleVideoEnded = (0, import_react.useCallback)(() => {
+    if (onMilestone && !milestonesFiredRef.current.has(100)) {
+      milestonesFiredRef.current.add(100);
+      onMilestone(100);
+    }
     if (isPlaylist && currentIndex < srcList.length - 1) {
       playlistAdvancingRef.current = true;
       setCurrentIndex((i) => i + 1);
@@ -1236,23 +1468,21 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
       setState((s) => ({ ...s, isPlaying: false, showControls: true }));
       onEnded?.();
     }
-  }, [isPlaylist, currentIndex, srcList.length, loopPlaylist, onNext, onEnded]);
+  }, [isPlaylist, currentIndex, srcList.length, loopPlaylist, onNext, onEnded, onMilestone]);
   const togglePlay = (0, import_react.useCallback)(() => {
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) {
+      setState((s) => ({ ...s, hasStarted: true }));
       v.play().catch(() => {
         setState((s) => ({ ...s, isPlaying: false }));
       });
-      setState((s) => ({ ...s, isPlaying: true, hasStarted: true }));
-      onPlay?.();
     } else {
       v.pause();
-      setState((s) => ({ ...s, isPlaying: false, showControls: true }));
-      onPause?.();
     }
-  }, [onPlay, onPause]);
+  }, []);
   const startPlayback = (0, import_react.useCallback)(() => {
+    if (!hasSource || parsed.isHls && hlsUnsupported) return;
     if (!isNative) {
       setEmbedStarted(true);
       setState((s) => ({ ...s, hasStarted: true }));
@@ -1260,17 +1490,16 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
     }
     const v = videoRef.current;
     if (!v) return;
+    setState((s) => ({ ...s, hasStarted: true }));
     v.play().catch(() => {
       setState((s) => ({ ...s, isPlaying: false }));
     });
-    setState((s) => ({ ...s, isPlaying: true, hasStarted: true }));
-    onPlay?.();
-  }, [isNative, onPlay]);
+  }, [isNative, hasSource, parsed.isHls, hlsUnsupported]);
   const handleProgressClick = (0, import_react.useCallback)(
     (e) => {
       const v = videoRef.current;
       const bar = progressRef.current;
-      if (!v || !bar) return;
+      if (!v || !bar || !isFinite(v.duration)) return;
       const rect = bar.getBoundingClientRect();
       const pct = clamp((e.clientX - rect.left) / rect.width, 0, 1);
       v.currentTime = pct * v.duration;
@@ -1286,18 +1515,26 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
       const v = videoRef.current;
       const bar = progressRef.current;
       if (!v || !bar) return;
-      const rect = bar.getBoundingClientRect();
-      const onMove = (ev) => {
-        const pct = clamp((ev.clientX - rect.left) / rect.width, 0, 1);
+      const seekTo = (clientX) => {
+        if (!isFinite(v.duration)) return;
+        const rect = bar.getBoundingClientRect();
+        const pct = clamp((clientX - rect.left) / rect.width, 0, 1);
         v.currentTime = pct * v.duration;
         setState((s) => ({ ...s, currentTime: v.currentTime }));
       };
+      seekTo(e.clientX);
+      const onMove = (ev) => seekTo(ev.clientX);
       const onUp = () => {
         setIsDragging(false);
-        if (v) onSeek?.(v.currentTime);
+        onSeekRef.current?.(v.currentTime);
+        removeListeners();
+      };
+      const removeListeners = () => {
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
+        dragCleanupRef.current = null;
       };
+      dragCleanupRef.current = removeListeners;
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
@@ -1306,39 +1543,48 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
   (0, import_react.useEffect)(() => {
     const bar = progressRef.current;
     if (!bar) return;
+    let activeDragCleanup = null;
     const onTouchStart = (e) => {
       e.preventDefault();
+      activeDragCleanup?.();
       setIsDragging(true);
       const v = videoRef.current;
       if (!v) return;
-      const rect = bar.getBoundingClientRect();
-      const touch = e.touches[0];
-      if (touch) {
-        const pct = clamp((touch.clientX - rect.left) / rect.width, 0, 1);
+      const seekTo = (clientX) => {
+        if (!isFinite(v.duration)) return;
+        const rect = bar.getBoundingClientRect();
+        const pct = clamp((clientX - rect.left) / rect.width, 0, 1);
         v.currentTime = pct * v.duration;
         setState((s) => ({ ...s, currentTime: v.currentTime }));
-      }
+      };
+      const touch = e.touches[0];
+      if (touch) seekTo(touch.clientX);
       const onMove = (ev) => {
         const t = ev.touches[0];
-        if (!t) return;
-        const pct = clamp((t.clientX - rect.left) / rect.width, 0, 1);
-        v.currentTime = pct * v.duration;
-        setState((s) => ({ ...s, currentTime: v.currentTime }));
+        if (t) seekTo(t.clientX);
+      };
+      const cleanup = () => {
+        window.removeEventListener("touchmove", onMove);
+        window.removeEventListener("touchend", onEnd);
+        window.removeEventListener("touchcancel", onEnd);
+        if (activeDragCleanup === cleanup) activeDragCleanup = null;
       };
       const onEnd = () => {
         setIsDragging(false);
-        onSeek?.(v.currentTime);
-        window.removeEventListener("touchmove", onMove);
-        window.removeEventListener("touchend", onEnd);
+        onSeekRef.current?.(v.currentTime);
+        cleanup();
       };
+      activeDragCleanup = cleanup;
       window.addEventListener("touchmove", onMove, { passive: false });
       window.addEventListener("touchend", onEnd);
+      window.addEventListener("touchcancel", onEnd);
     };
     bar.addEventListener("touchstart", onTouchStart, { passive: false });
     return () => {
       bar.removeEventListener("touchstart", onTouchStart);
+      activeDragCleanup?.();
     };
-  }, [onSeek]);
+  }, [isNative, hasSource, state.hasStarted]);
   const handleProgressHover = (0, import_react.useCallback)(
     (e) => {
       const bar = progressRef.current;
@@ -1348,6 +1594,19 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
       setHoverProgress(pct);
     },
     []
+  );
+  const setVolumeLevel = (0, import_react.useCallback)(
+    (vol) => {
+      const v = videoRef.current;
+      const level = clamp(vol, 0, 1);
+      if (v) {
+        v.volume = level;
+        v.muted = level === 0;
+      }
+      setState((s) => ({ ...s, volume: level, isMuted: level === 0 }));
+      onVolumeChange?.(level, level === 0);
+    },
+    [onVolumeChange]
   );
   const toggleMute = (0, import_react.useCallback)(() => {
     const v = videoRef.current;
@@ -1365,30 +1624,30 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
   }, [state.volume, onVolumeChange]);
   const handleVolumeSliderClick = (0, import_react.useCallback)(
     (e) => {
-      const v = videoRef.current;
-      const target = e.currentTarget;
-      if (!v) return;
-      const rect = target.getBoundingClientRect();
-      const pct = clamp((rect.bottom - e.clientY) / rect.height, 0, 1);
-      v.volume = pct;
-      v.muted = pct === 0;
-      setState((s) => ({ ...s, volume: pct, isMuted: pct === 0 }));
-      onVolumeChange?.(pct, pct === 0);
+      const rect = e.currentTarget.getBoundingClientRect();
+      setVolumeLevel((rect.bottom - e.clientY) / rect.height);
     },
-    [onVolumeChange]
+    [setVolumeLevel]
   );
   const toggleFullscreen = (0, import_react.useCallback)(() => {
     const c = containerRef.current;
     const v = videoRef.current;
+    const doc = document;
     if (!c) return;
-    if (!document.fullscreenElement) {
+    if (!document.fullscreenElement && !doc.webkitFullscreenElement) {
       if (c.requestFullscreen) {
-        c.requestFullscreen();
-      } else if (v && v.webkitEnterFullscreen) {
+        c.requestFullscreen().catch(() => {
+        });
+      } else if (c.webkitRequestFullscreen) {
+        c.webkitRequestFullscreen();
+      } else if (v?.webkitEnterFullscreen) {
         v.webkitEnterFullscreen();
       }
+    } else if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {
+      });
     } else {
-      document.exitFullscreen?.();
+      doc.webkitExitFullscreen?.();
     }
   }, []);
   const togglePip = (0, import_react.useCallback)(async () => {
@@ -1419,9 +1678,26 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
     setShowSpeedMenu(false);
     setShowCCMenu(false);
   }, []);
+  const stepPlaybackRate = (0, import_react.useCallback)(
+    (dir) => {
+      const current = state.playbackRate;
+      const idx = resolvedRates.indexOf(current);
+      let next;
+      if (idx !== -1) {
+        next = resolvedRates[idx + dir];
+      } else if (dir === 1) {
+        next = resolvedRates.find((r) => r > current);
+      } else {
+        next = [...resolvedRates].reverse().find((r) => r < current);
+      }
+      if (next !== void 0) setPlaybackRate(next);
+    },
+    [state.playbackRate, resolvedRates, setPlaybackRate]
+  );
   const handleKeyDown = (0, import_react.useCallback)(
     (e) => {
       if (!state.isFocused || !isNative) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const v = videoRef.current;
       if (!v) return;
       if (e.shiftKey && e.key === "ArrowLeft" && activeChapters && activeChapters.length > 0) {
@@ -1443,21 +1719,16 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
         togglePlay();
       } else if (matchesKey(e.key, resolvedKeymap.seekBack)) {
         e.preventDefault();
-        v.currentTime = Math.max(0, v.currentTime - 5);
+        v.currentTime = Math.max(0, v.currentTime - seekStep);
       } else if (matchesKey(e.key, resolvedKeymap.seekForward)) {
         e.preventDefault();
-        v.currentTime = Math.min(v.duration, v.currentTime + 5);
+        v.currentTime = Math.min(v.duration || Infinity, v.currentTime + seekStep);
       } else if (matchesKey(e.key, resolvedKeymap.volumeUp)) {
         e.preventDefault();
-        v.volume = clamp(v.volume + 0.1, 0, 1);
-        setState((s) => ({ ...s, volume: v.volume, isMuted: false }));
-        v.muted = false;
-        onVolumeChange?.(v.volume, false);
+        setVolumeLevel((state.isMuted ? 0 : state.volume) + volumeStep);
       } else if (matchesKey(e.key, resolvedKeymap.volumeDown)) {
         e.preventDefault();
-        v.volume = clamp(v.volume - 0.1, 0, 1);
-        setState((s) => ({ ...s, volume: v.volume, isMuted: v.volume === 0 }));
-        onVolumeChange?.(v.volume, v.volume === 0);
+        setVolumeLevel((state.isMuted ? 0 : state.volume) - volumeStep);
       } else if (matchesKey(e.key, resolvedKeymap.fullscreen)) {
         e.preventDefault();
         toggleFullscreen();
@@ -1466,13 +1737,10 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
         toggleMute();
       } else if (matchesKey(e.key, resolvedKeymap.speedDown)) {
         e.preventDefault();
-        const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
-        if (idx > 0) setPlaybackRate(PLAYBACK_RATES[idx - 1]);
+        stepPlaybackRate(-1);
       } else if (matchesKey(e.key, resolvedKeymap.speedUp)) {
         e.preventDefault();
-        const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
-        if (idx < PLAYBACK_RATES.length - 1)
-          setPlaybackRate(PLAYBACK_RATES[idx + 1]);
+        stepPlaybackRate(1);
       } else if (matchesKey(e.key, resolvedKeymap.shortcuts)) {
         e.preventDefault();
         setShowShortcuts((prev) => !prev);
@@ -1481,41 +1749,110 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
         setShowShortcuts(false);
         setShowSpeedMenu(false);
         setShowCCMenu(false);
+        setShowVolumeSlider(false);
       } else if (/^[0-9]$/.test(e.key)) {
         e.preventDefault();
-        const pct = parseInt(e.key) / 10;
-        v.currentTime = pct * v.duration;
+        if (isFinite(v.duration)) {
+          v.currentTime = parseInt(e.key) / 10 * v.duration;
+        }
       }
       resetHideTimer();
     },
     [
       state.isFocused,
-      state.playbackRate,
+      state.volume,
+      state.isMuted,
       isNative,
       resolvedKeymap,
       togglePlay,
       toggleFullscreen,
       toggleMute,
-      setPlaybackRate,
+      stepPlaybackRate,
+      setVolumeLevel,
+      seekStep,
+      volumeStep,
       resetHideTimer,
-      activeChapters,
-      onVolumeChange
+      activeChapters
     ]
+  );
+  const handleProgressKeyDown = (0, import_react.useCallback)(
+    (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const v = videoRef.current;
+      if (!v) return;
+      let handled = true;
+      switch (e.key) {
+        case "ArrowLeft":
+        case "ArrowDown":
+          v.currentTime = Math.max(0, v.currentTime - seekStep);
+          break;
+        case "ArrowRight":
+        case "ArrowUp":
+          v.currentTime = Math.min(v.duration || Infinity, v.currentTime + seekStep);
+          break;
+        case "Home":
+          v.currentTime = 0;
+          break;
+        case "End":
+          if (isFinite(v.duration)) v.currentTime = v.duration;
+          break;
+        default:
+          handled = false;
+      }
+      if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+        onSeek?.(v.currentTime);
+        resetHideTimer();
+      }
+    },
+    [seekStep, onSeek, resetHideTimer]
+  );
+  const handleVolumeKeyDown = (0, import_react.useCallback)(
+    (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const current = state.isMuted ? 0 : state.volume;
+      let handled = true;
+      switch (e.key) {
+        case "ArrowUp":
+        case "ArrowRight":
+          setVolumeLevel(current + volumeStep);
+          break;
+        case "ArrowDown":
+        case "ArrowLeft":
+          setVolumeLevel(current - volumeStep);
+          break;
+        case "Home":
+          setVolumeLevel(0);
+          break;
+        case "End":
+          setVolumeLevel(1);
+          break;
+        default:
+          handled = false;
+      }
+      if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+        resetHideTimer();
+      }
+    },
+    [state.isMuted, state.volume, volumeStep, setVolumeLevel, resetHideTimer]
   );
   const handleMouseMove = (0, import_react.useCallback)(() => {
     resetHideTimer();
   }, [resetHideTimer]);
   const handleMouseLeave = (0, import_react.useCallback)(() => {
-    if (isPlayingRef.current) {
+    if (!forceShowControls && isPlayingRef.current) {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
       hideTimerRef.current = setTimeout(() => {
         setState((s) => ({ ...s, showControls: false }));
         setShowSpeedMenu(false);
         setShowVolumeSlider(false);
-      }, 800);
+      }, HIDE_ON_LEAVE_DELAY);
     }
     setHoverProgress(null);
-  }, []);
+  }, [forceShowControls]);
   const progress = state.duration > 0 ? state.currentTime / state.duration * 100 : 0;
   const thumbFrame = previewThumbnails && hoverProgress !== null ? Math.min(
     Math.floor(hoverProgress / 100 * previewThumbnails.count),
@@ -1526,7 +1863,8 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
   ) : void 0;
   const posterUrl = poster || DEFAULT_POSTER;
   const showPoster = !state.hasStarted;
-  const controlsVisible = state.showControls || !state.isPlaying || isDragging || showSpeedMenu || showCCMenu;
+  const hlsError = !!parsed.isHls && hlsUnsupported;
+  const controlsVisible = forceShowControls || state.showControls || !state.isPlaying || isDragging || showSpeedMenu || showCCMenu;
   const VolumeIcon = state.isMuted ? VolumeMuteIcon : state.volume < 0.5 ? VolumeLowIcon : VolumeHighIcon;
   (0, import_react.useImperativeHandle)(
     ref,
@@ -1547,25 +1885,20 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
       getCurrentTime: () => videoRef.current?.currentTime ?? 0,
       getDuration: () => videoRef.current?.duration ?? 0,
       getVolume: () => videoRef.current?.volume ?? state.volume,
-      setVolume: (volume) => {
-        const v = videoRef.current;
-        if (!v) return;
-        v.volume = clamp(volume, 0, 1);
-        v.muted = volume === 0;
-        setState((s) => ({ ...s, volume: v.volume, isMuted: v.muted }));
-      },
+      setVolume: (volume) => setVolumeLevel(volume),
       toggleMute: () => toggleMute(),
       toggleFullscreen: () => toggleFullscreen(),
       getVideoElement: () => videoRef.current
     }),
-    [state.volume, toggleMute, toggleFullscreen]
+    [state.volume, toggleMute, toggleFullscreen, setVolumeLevel]
   );
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
     {
       ref: containerRef,
       className,
       "data-vplayer-root": "",
+      "data-vplayer-id": instanceId,
       style: { ...getContainerStyle(width), ...style },
       tabIndex: 0,
       role: "region",
@@ -1576,476 +1909,510 @@ var VPlayer = (0, import_react.forwardRef)(function VPlayer2({
       onMouseMove: handleMouseMove,
       onMouseLeave: handleMouseLeave,
       onTouchStart: handleMouseMove,
-      children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { "data-vplayer-aspect": "", style: getAspectBoxStyle(ratio), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { "data-vplayer-inner": "", style: getInnerStyle(), children: [
-        isNative && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "video",
-          {
-            ref: videoRef,
-            src: parsed.embedUrl,
-            poster: posterUrl,
-            preload,
-            loop,
-            autoPlay,
-            muted: state.isMuted,
-            playsInline: true,
-            style: getVideoStyle(),
-            onLoadedMetadata: handleLoadedMetadata,
-            onDurationChange: handleDurationChange,
-            onTimeUpdate: handleTimeUpdate,
-            onProgress: handleProgress,
-            onWaiting: handleWaiting,
-            onCanPlay: handleCanPlay,
-            onEnded: handleVideoEnded,
-            onError: handleError,
-            onClick: togglePlay,
-            "aria-hidden": "true",
-            children: tracks?.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "track",
-              {
-                kind: "subtitles",
-                src: t.src,
-                srcLang: t.lang,
-                label: t.label,
-                default: t.default
-              },
-              i
-            ))
-          }
-        ),
-        !isNative && embedStarted && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "iframe",
-          {
-            src: `${parsed.embedUrl}&autoplay=1`,
-            style: getIframeStyle(),
-            allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
-            allowFullScreen: true,
-            title: title || "Embedded video",
-            loading: "lazy"
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-          "div",
-          {
-            style: getPosterOverlayStyle(posterUrl, showPoster),
-            onClick: showPoster ? startPlayback : void 0,
-            role: showPoster ? "button" : void 0,
-            tabIndex: showPoster ? -1 : void 0,
-            "aria-label": showPoster ? "Play video" : void 0,
-            "aria-hidden": !showPoster,
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getPosterGradientStyle() }),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "button",
+      children: [
+        captionStyle && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("style", { children: `[data-vplayer-id="${instanceId}"] video::cue {` + (captionStyle.color ? `color:${captionStyle.color};` : "") + (captionStyle.background ? `background-color:${captionStyle.background};` : "") + (captionStyle.fontSize ? `font-size:${captionStyle.fontSize};` : "") + (captionStyle.fontFamily ? `font-family:${captionStyle.fontFamily};` : "") + `}` }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { "data-vplayer-aspect": "", style: getAspectBoxStyle(ratio), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { "data-vplayer-inner": "", style: getInnerStyle(), children: [
+          isNative && hasSource && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "video",
+            {
+              ref: videoRef,
+              src: parsed.embedUrl,
+              poster: posterUrl,
+              preload,
+              loop,
+              autoPlay,
+              muted: state.isMuted,
+              crossOrigin,
+              playsInline: true,
+              style: getVideoStyle(),
+              onLoadedMetadata: handleLoadedMetadata,
+              onDurationChange: handleDurationChange,
+              onTimeUpdate: handleTimeUpdate,
+              onProgress: handleProgress,
+              onWaiting: handleWaiting,
+              onCanPlay: handleCanPlay,
+              onPlay: handleVideoPlay,
+              onPause: handleVideoPause,
+              onRateChange: handleRateChangeEvent,
+              onEnded: handleVideoEnded,
+              onError: handleError,
+              onClick: togglePlay,
+              onDoubleClick: toggleFullscreen,
+              "aria-hidden": "true",
+              children: tracks?.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                "track",
                 {
-                  type: "button",
-                  style: getPlayButtonLargeStyle(accentColor),
-                  tabIndex: showPoster ? 0 : -1,
-                  onMouseEnter: (e) => {
-                    e.currentTarget.style.transform = "scale(1.08)";
-                  },
-                  onMouseLeave: (e) => {
-                    e.currentTarget.style.transform = "scale(1)";
-                  },
-                  "aria-label": "Play video",
-                  children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PlayIcon, { size: 32, color: iconColor })
-                }
-              )
-            ]
-          }
-        ),
-        state.isLoading && state.hasStarted && !state.error && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getLoadingOverlayStyle(), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SpinnerIcon, { size: 40, color: iconColor }) }),
-        state.error && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getErrorOverlayStyle(), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ErrorIcon, { size: 40, color: iconColor }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: getErrorMessageStyle(), children: state.error.code === 4 ? "This video format is not supported" : "Video could not be loaded" })
-        ] }),
-        title && state.hasStarted && controlsVisible && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getTitleOverlayStyle(), children: title }),
-        showShortcuts && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "div",
-          {
-            style: getShortcutsOverlayStyle(),
-            onClick: () => setShowShortcuts(false),
-            children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-              "div",
-              {
-                style: getShortcutsBoxStyle(),
-                onClick: (e) => e.stopPropagation(),
-                children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                    "div",
-                    {
-                      style: {
-                        fontWeight: 600,
-                        marginBottom: "12px",
-                        fontSize: "14px"
-                      },
-                      children: "Keyboard Shortcuts"
-                    }
-                  ),
-                  SHORTCUTS.map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getShortcutRowStyle(), children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("kbd", { style: getKbdStyle(), children: key }),
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                      "span",
-                      {
-                        style: {
-                          color: "rgba(255,255,255,0.75)",
-                          fontSize: "13px"
-                        },
-                        children: label
-                      }
-                    )
-                  ] }, key))
-                ]
-              }
-            )
-          }
-        ),
-        showCCMenu && tracks && tracks.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "div",
-          {
-            style: getMenuOverlayStyle(),
-            onClick: () => setShowCCMenu(false),
-            children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-              "div",
-              {
-                style: getMenuPanelStyle(),
-                onClick: (e) => e.stopPropagation(),
-                children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                    "button",
-                    {
-                      type: "button",
-                      style: getSpeedMenuItemStyle(
-                        activeTrack === null,
-                        accentColor
-                      ),
-                      onClick: () => {
-                        setActiveTrack(null);
-                        setShowCCMenu(false);
-                      },
-                      children: "Off"
-                    }
-                  ),
-                  tracks.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                    "button",
-                    {
-                      type: "button",
-                      style: getSpeedMenuItemStyle(
-                        activeTrack === i,
-                        accentColor
-                      ),
-                      onClick: () => {
-                        setActiveTrack(i);
-                        setShowCCMenu(false);
-                      },
-                      children: t.label
-                    },
-                    i
-                  ))
-                ]
-              }
-            )
-          }
-        ),
-        showSpeedMenu && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "div",
-          {
-            style: getMenuOverlayStyle(),
-            onClick: () => setShowSpeedMenu(false),
-            children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "div",
-              {
-                style: getMenuPanelStyle(),
-                onClick: (e) => e.stopPropagation(),
-                children: PLAYBACK_RATES.map((rate) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                  "button",
-                  {
-                    type: "button",
-                    style: getSpeedMenuItemStyle(
-                      state.playbackRate === rate,
-                      accentColor
-                    ),
-                    onClick: () => setPlaybackRate(rate),
-                    onMouseEnter: (e) => {
-                      e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
-                    },
-                    onMouseLeave: (e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                    },
-                    children: rate === 1 ? "Normal" : `${rate}x`
-                  },
-                  rate
-                ))
-              }
-            )
-          }
-        ),
-        isNative && state.hasStarted && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlsBarStyle(controlsVisible), children: [
+                  kind: "subtitles",
+                  src: t.src,
+                  srcLang: t.lang,
+                  label: t.label,
+                  default: t.default
+                },
+                i
+              ))
+            }
+          ),
+          !isNative && embedStarted && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "iframe",
+            {
+              src: `${parsed.embedUrl}&autoplay=1`,
+              style: getIframeStyle(),
+              allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
+              allowFullScreen: true,
+              title: title || "Embedded video",
+              loading: "lazy"
+            }
+          ),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
             "div",
             {
-              ref: progressRef,
-              style: getProgressContainerStyle(),
-              onClick: handleProgressClick,
-              onMouseDown: handleProgressMouseDown,
-              onMouseMove: handleProgressHover,
-              onMouseLeave: () => setHoverProgress(null),
-              role: "slider",
-              "aria-label": "Seek",
-              "aria-valuemin": 0,
-              "aria-valuemax": 100,
-              "aria-valuenow": Math.round(progress),
-              "aria-valuetext": `${formatTime(state.currentTime)} of ${formatTime(state.duration)}`,
-              tabIndex: -1,
+              style: getPosterOverlayStyle(posterUrl, showPoster),
+              onClick: showPoster ? startPlayback : void 0,
+              "aria-hidden": !showPoster,
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getPosterGradientStyle() }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                  "button",
+                  {
+                    type: "button",
+                    style: getPlayButtonLargeStyle(accentColor),
+                    tabIndex: showPoster ? 0 : -1,
+                    onMouseEnter: (e) => {
+                      e.currentTarget.style.transform = "scale(1.08)";
+                    },
+                    onMouseLeave: (e) => {
+                      e.currentTarget.style.transform = "scale(1)";
+                    },
+                    "aria-label": "Play video",
+                    children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PlayIcon, { size: 32, color: iconColor })
+                  }
+                )
+              ]
+            }
+          ),
+          state.isLoading && state.hasStarted && !state.error && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getLoadingOverlayStyle(), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SpinnerIcon, { size: 40, color: iconColor }) }),
+          (state.error || hlsError || !hasSource) && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getErrorOverlayStyle(), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ErrorIcon, { size: 40, color: iconColor }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: getErrorMessageStyle(), children: !hasSource ? "No video source provided" : hlsError ? "HLS playback is not supported in this browser" : state.error?.code === 4 ? "This video format is not supported" : "Video could not be loaded" })
+          ] }),
+          title && state.hasStarted && controlsVisible && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getTitleOverlayStyle(), children: title }),
+          showShortcuts && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "div",
+            {
+              style: getShortcutsOverlayStyle(),
+              onClick: () => setShowShortcuts(false),
+              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                "div",
+                {
+                  style: getShortcutsBoxStyle(),
+                  onClick: (e) => e.stopPropagation(),
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "div",
+                      {
+                        style: {
+                          fontWeight: 600,
+                          marginBottom: "12px",
+                          fontSize: "14px"
+                        },
+                        children: "Keyboard Shortcuts"
+                      }
+                    ),
+                    getShortcuts(seekStep, volumeStep).map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getShortcutRowStyle(), children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("kbd", { style: getKbdStyle(), children: key }),
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                        "span",
+                        {
+                          style: {
+                            color: "rgba(255,255,255,0.75)",
+                            fontSize: "13px"
+                          },
+                          children: label
+                        }
+                      )
+                    ] }, key))
+                  ]
+                }
+              )
+            }
+          ),
+          showCCMenu && tracks && tracks.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "div",
+            {
+              style: getMenuOverlayStyle(),
+              onClick: () => setShowCCMenu(false),
+              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                "div",
+                {
+                  style: getMenuPanelStyle(),
+                  onClick: (e) => e.stopPropagation(),
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        autoFocus: activeTrack === null,
+                        style: getSpeedMenuItemStyle(
+                          activeTrack === null,
+                          accentColor
+                        ),
+                        onClick: () => {
+                          setActiveTrack(null);
+                          setShowCCMenu(false);
+                        },
+                        children: "Off"
+                      }
+                    ),
+                    tracks.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        autoFocus: activeTrack === i,
+                        style: getSpeedMenuItemStyle(
+                          activeTrack === i,
+                          accentColor
+                        ),
+                        onClick: () => {
+                          setActiveTrack(i);
+                          setShowCCMenu(false);
+                        },
+                        children: t.label
+                      },
+                      i
+                    ))
+                  ]
+                }
+              )
+            }
+          ),
+          showSpeedMenu && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "div",
+            {
+              style: getMenuOverlayStyle(),
+              onClick: () => setShowSpeedMenu(false),
+              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                "div",
+                {
+                  style: getMenuPanelStyle(),
+                  onClick: (e) => e.stopPropagation(),
+                  children: resolvedRates.map((rate) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                    "button",
+                    {
+                      type: "button",
+                      autoFocus: state.playbackRate === rate,
+                      style: getSpeedMenuItemStyle(
+                        state.playbackRate === rate,
+                        accentColor
+                      ),
+                      onClick: () => setPlaybackRate(rate),
+                      onMouseEnter: (e) => {
+                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
+                      },
+                      onMouseLeave: (e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                      },
+                      children: rate === 1 ? "Normal" : `${rate}x`
+                    },
+                    rate
+                  ))
+                }
+              )
+            }
+          ),
+          isNative && state.hasStarted && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "div",
+            {
+              ref: controlsBarRef,
+              style: getControlsBarStyle(controlsVisible),
+              onFocus: resetHideTimer,
               children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
                   "div",
                   {
-                    style: {
-                      ...getProgressTrackStyle(),
-                      height: hoverProgress !== null || isDragging ? "6px" : "4px"
-                    },
+                    ref: progressRef,
+                    style: getProgressContainerStyle(),
+                    onClick: handleProgressClick,
+                    onMouseDown: handleProgressMouseDown,
+                    onMouseMove: handleProgressHover,
+                    onMouseLeave: () => setHoverProgress(null),
+                    onKeyDown: handleProgressKeyDown,
+                    role: "slider",
+                    "aria-label": "Seek",
+                    "aria-valuemin": 0,
+                    "aria-valuemax": 100,
+                    "aria-valuenow": Math.round(progress),
+                    "aria-valuetext": `${formatTime(state.currentTime)} of ${formatTime(state.duration)}`,
+                    tabIndex: 0,
                     children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getProgressBufferStyle(state.buffered) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                        "div",
+                        {
+                          style: {
+                            ...getProgressTrackStyle(),
+                            height: hoverProgress !== null || isDragging ? "6px" : "4px"
+                          },
+                          children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getProgressBufferStyle(state.buffered) }),
+                            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                              "div",
+                              {
+                                style: getProgressFillStyle(progress, accentColor)
+                              }
+                            ),
+                            activeChapters && state.duration > 0 && activeChapters.map((ch, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                              "div",
+                              {
+                                style: getChapterMarkerStyle(
+                                  ch.time / state.duration * 100
+                                )
+                              },
+                              i
+                            ))
+                          ]
+                        }
+                      ),
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                         "div",
                         {
-                          style: getProgressFillStyle(progress, accentColor)
+                          style: getProgressThumbStyle(
+                            progress,
+                            accentColor,
+                            hoverProgress !== null || isDragging
+                          )
                         }
                       ),
-                      activeChapters && state.duration > 0 && activeChapters.map((ch, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      thumbFrame !== null && previewThumbnails && hoverProgress !== null && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                         "div",
                         {
-                          style: getChapterMarkerStyle(
-                            ch.time / state.duration * 100
+                          style: getPreviewThumbnailStyle(
+                            hoverProgress,
+                            previewThumbnails,
+                            thumbFrame
                           )
-                        },
-                        i
-                      ))
+                        }
+                      ),
+                      hoverProgress !== null && state.duration > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getTooltipStyle(hoverProgress), children: nearChapter?.label ?? formatTime(hoverProgress / 100 * state.duration) })
                     ]
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                  "div",
-                  {
-                    style: getProgressThumbStyle(
-                      progress,
-                      accentColor,
-                      hoverProgress !== null || isDragging
-                    )
-                  }
-                ),
-                thumbFrame !== null && previewThumbnails && hoverProgress !== null && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                  "div",
-                  {
-                    style: getPreviewThumbnailStyle(
-                      hoverProgress,
-                      previewThumbnails,
-                      thumbFrame
-                    )
-                  }
-                ),
-                hoverProgress !== null && state.duration > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getTooltipStyle(hoverProgress), children: nearChapter?.label ?? formatTime(hoverProgress / 100 * state.duration) })
-              ]
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlsRowStyle(), children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlGroupStyle(), children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "button",
-                {
-                  type: "button",
-                  style: getControlButtonStyle(),
-                  onClick: togglePlay,
-                  "aria-label": state.isPlaying ? "Pause" : "Play",
-                  onMouseEnter: (e) => {
-                    e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
-                  },
-                  onMouseLeave: (e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                  },
-                  children: state.isPlaying ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PauseIcon, { size: 20, color: iconColor }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PlayIcon, { size: 20, color: iconColor })
-                }
-              ),
-              isPlaylist && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-                currentIndex > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                  "button",
-                  {
-                    type: "button",
-                    style: getControlButtonStyle(),
-                    onClick: () => {
-                      setCurrentIndex((i) => i - 1);
-                      onPrev?.();
-                    },
-                    "aria-label": "Previous",
-                    children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PrevIcon, { size: 18, color: iconColor })
-                  }
-                ),
-                currentIndex < srcList.length - 1 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                  "button",
-                  {
-                    type: "button",
-                    style: getControlButtonStyle(),
-                    onClick: () => {
-                      setCurrentIndex((i) => i + 1);
-                      onNext?.();
-                    },
-                    "aria-label": "Next",
-                    children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(NextIcon, { size: 18, color: iconColor })
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getVolumeSliderContainerStyle(), children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                  "button",
-                  {
-                    type: "button",
-                    style: getControlButtonStyle(),
-                    onClick: () => setShowVolumeSlider((v) => !v),
-                    onContextMenu: (e) => {
-                      e.preventDefault();
-                      toggleMute();
-                    },
-                    "aria-label": state.isMuted ? "Unmute" : "Mute",
-                    onMouseEnter: (e) => {
-                      e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
-                    },
-                    onMouseLeave: (e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                    },
-                    children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(VolumeIcon, { size: 20, color: iconColor })
-                  }
-                ),
-                showVolumeSlider && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getVolumePopupStyle(), children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-                    "div",
-                    {
-                      style: getVolumeVerticalTrackStyle(),
-                      onClick: handleVolumeSliderClick,
-                      role: "slider",
-                      "aria-label": "Volume",
-                      "aria-valuemin": 0,
-                      "aria-valuemax": 100,
-                      "aria-valuenow": Math.round(
-                        (state.isMuted ? 0 : state.volume) * 100
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlsRowStyle(), children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlGroupStyle(), children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        style: getControlButtonStyle(),
+                        onClick: togglePlay,
+                        "aria-label": state.isPlaying ? "Pause" : "Play",
+                        onMouseEnter: (e) => {
+                          e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
+                        },
+                        onMouseLeave: (e) => {
+                          e.currentTarget.style.backgroundColor = "transparent";
+                        },
+                        children: state.isPlaying ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PauseIcon, { size: 20, color: iconColor }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PlayIcon, { size: 20, color: iconColor })
+                      }
+                    ),
+                    isPlaylist && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+                      currentIndex > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                        "button",
+                        {
+                          type: "button",
+                          style: getControlButtonStyle(),
+                          onClick: () => {
+                            setCurrentIndex((i) => i - 1);
+                            onPrev?.();
+                          },
+                          "aria-label": "Previous",
+                          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PrevIcon, { size: 18, color: iconColor })
+                        }
                       ),
-                      tabIndex: -1,
-                      children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                          "div",
-                          {
-                            style: getVolumeVerticalFillStyle(
-                              state.isMuted ? 0 : state.volume,
-                              accentColor
-                            )
+                      currentIndex < srcList.length - 1 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                        "button",
+                        {
+                          type: "button",
+                          style: getControlButtonStyle(),
+                          onClick: () => {
+                            setCurrentIndex((i) => i + 1);
+                            onNext?.();
+                          },
+                          "aria-label": "Next",
+                          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(NextIcon, { size: 18, color: iconColor })
+                        }
+                      )
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                      "div",
+                      {
+                        style: getVolumeSliderContainerStyle(),
+                        onMouseEnter: () => setShowVolumeSlider(true),
+                        onMouseLeave: () => setShowVolumeSlider(false),
+                        onFocus: () => setShowVolumeSlider(true),
+                        onBlur: (e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget)) {
+                            setShowVolumeSlider(false);
                           }
-                        ),
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                          "div",
+                        },
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                            "button",
+                            {
+                              type: "button",
+                              style: getControlButtonStyle(),
+                              onClick: toggleMute,
+                              "aria-label": state.isMuted ? "Unmute" : "Mute",
+                              onMouseEnter: (e) => {
+                                e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
+                              },
+                              onMouseLeave: (e) => {
+                                e.currentTarget.style.backgroundColor = "transparent";
+                              },
+                              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(VolumeIcon, { size: 20, color: iconColor })
+                            }
+                          ),
+                          showVolumeSlider && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getVolumePopupStyle(), children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                              "div",
+                              {
+                                style: getVolumeVerticalTrackStyle(),
+                                onClick: handleVolumeSliderClick,
+                                onKeyDown: handleVolumeKeyDown,
+                                role: "slider",
+                                "aria-label": "Volume",
+                                "aria-valuemin": 0,
+                                "aria-valuemax": 100,
+                                "aria-valuenow": Math.round(
+                                  (state.isMuted ? 0 : state.volume) * 100
+                                ),
+                                tabIndex: 0,
+                                children: [
+                                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                                    "div",
+                                    {
+                                      style: getVolumeVerticalFillStyle(
+                                        state.isMuted ? 0 : state.volume,
+                                        accentColor
+                                      )
+                                    }
+                                  ),
+                                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                                    "div",
+                                    {
+                                      style: getVolumeVerticalThumbStyle(
+                                        state.isMuted ? 0 : state.volume,
+                                        accentColor
+                                      )
+                                    }
+                                  )
+                                ]
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: getVolumeLabelStyle(), children: state.isMuted ? "0%" : `${Math.round(state.volume * 100)}%` })
+                          ] })
+                        ]
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: getTimeDisplayStyle(), children: [
+                      formatTime(state.currentTime),
+                      " / ",
+                      formatTime(state.duration)
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlGroupStyle(), children: [
+                    tracks && tracks.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        style: getControlButtonStyle(),
+                        onClick: () => setShowCCMenu(!showCCMenu),
+                        "aria-label": "Captions",
+                        "aria-expanded": showCCMenu,
+                        children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                          CCIcon,
                           {
-                            style: getVolumeVerticalThumbStyle(
-                              state.isMuted ? 0 : state.volume,
-                              accentColor
-                            )
+                            size: 18,
+                            color: activeTrack !== null ? accentColor : iconColor
                           }
                         )
-                      ]
-                    }
-                  ),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: getVolumeLabelStyle(), children: state.isMuted ? "0%" : `${Math.round(state.volume * 100)}%` })
-                ] })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: getTimeDisplayStyle(), children: [
-                formatTime(state.currentTime),
-                " / ",
-                formatTime(state.duration)
-              ] })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlGroupStyle(), children: [
-              tracks && tracks.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "button",
-                {
-                  type: "button",
-                  style: getControlButtonStyle(),
-                  onClick: () => setShowCCMenu(!showCCMenu),
-                  "aria-label": "Captions",
-                  "aria-expanded": showCCMenu,
-                  children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                    CCIcon,
-                    {
-                      size: 18,
-                      color: activeTrack !== null ? accentColor : iconColor
-                    }
-                  )
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "button",
-                {
-                  type: "button",
-                  style: {
-                    ...getControlButtonStyle(),
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    minWidth: "32px"
-                  },
-                  onClick: () => setShowSpeedMenu(!showSpeedMenu),
-                  "aria-label": "Playback speed",
-                  "aria-expanded": showSpeedMenu,
-                  onMouseEnter: (e) => {
-                    e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
-                  },
-                  onMouseLeave: (e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                  },
-                  children: state.playbackRate === 1 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SettingsIcon, { size: 18, color: iconColor }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { color: accentColor }, children: [
-                    state.playbackRate,
-                    "x"
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        style: {
+                          ...getControlButtonStyle(),
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          minWidth: "32px"
+                        },
+                        onClick: () => setShowSpeedMenu(!showSpeedMenu),
+                        "aria-label": "Playback speed",
+                        "aria-expanded": showSpeedMenu,
+                        onMouseEnter: (e) => {
+                          e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
+                        },
+                        onMouseLeave: (e) => {
+                          e.currentTarget.style.backgroundColor = "transparent";
+                        },
+                        children: state.playbackRate === 1 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SettingsIcon, { size: 18, color: iconColor }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { color: accentColor }, children: [
+                          state.playbackRate,
+                          "x"
+                        ] })
+                      }
+                    ),
+                    supportsPip && !disablePictureInPicture && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        style: getControlButtonStyle(),
+                        onClick: togglePip,
+                        "aria-label": "Picture in Picture",
+                        onMouseEnter: (e) => {
+                          e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
+                        },
+                        onMouseLeave: (e) => {
+                          e.currentTarget.style.backgroundColor = "transparent";
+                        },
+                        children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PipIcon, { size: 18, color: iconColor })
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        style: getControlButtonStyle(),
+                        onClick: toggleFullscreen,
+                        "aria-label": state.isFullscreen ? "Exit fullscreen" : "Enter fullscreen",
+                        onMouseEnter: (e) => {
+                          e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
+                        },
+                        onMouseLeave: (e) => {
+                          e.currentTarget.style.backgroundColor = "transparent";
+                        },
+                        children: state.isFullscreen ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ExitFullscreenIcon, { size: 18, color: iconColor }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FullscreenIcon, { size: 18, color: iconColor })
+                      }
+                    )
                   ] })
-                }
-              ),
-              supportsPip && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "button",
-                {
-                  type: "button",
-                  style: getControlButtonStyle(),
-                  onClick: togglePip,
-                  "aria-label": "Picture in Picture",
-                  onMouseEnter: (e) => {
-                    e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
-                  },
-                  onMouseLeave: (e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                  },
-                  children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PipIcon, { size: 18, color: iconColor })
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "button",
-                {
-                  type: "button",
-                  style: getControlButtonStyle(),
-                  onClick: toggleFullscreen,
-                  "aria-label": state.isFullscreen ? "Exit fullscreen" : "Enter fullscreen",
-                  onMouseEnter: (e) => {
-                    e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)";
-                  },
-                  onMouseLeave: (e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                  },
-                  children: state.isFullscreen ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ExitFullscreenIcon, { size: 18, color: iconColor }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FullscreenIcon, { size: 18, color: iconColor })
-                }
-              )
-            ] })
-          ] })
-        ] })
-      ] }) })
+                ] })
+              ]
+            }
+          )
+        ] }) })
+      ]
     }
   );
+});
+var VPlayer2 = Object.assign(VPlayerBase, {
+  /** Returns true if a URL is recognized as playable (platform link, media file, blob/data URL) */
+  canPlay: canPlayUrl
 });
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   VPlayer,
+  canPlayUrl,
   formatTime,
+  isHlsSource,
   parseAspectRatio,
   parseVideoSource
 });

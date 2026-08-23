@@ -8,4 +8,4 @@ export type {
   VPlayerAction,
   VPlayerKeymap,
 } from "./types";
-export { parseVideoSource, formatTime, parseAspectRatio } from "./utils";
+export { parseVideoSource, formatTime, parseAspectRatio, canPlayUrl, isHlsSource } from "./utils";

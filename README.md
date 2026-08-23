@@ -1,13 +1,17 @@
 # VPlayer React
 
-A lightweight, dependency-free, production-ready video player for React. Supports local files, YouTube, Vimeo, and Bilibili with brand-configurable controls, playlists, captions, chapter markers, analytics callbacks, and fully remappable keyboard shortcuts.
+A lightweight, dependency-free, production-ready video player for React. Supports local files, HLS streams, YouTube, Vimeo, and Bilibili with brand-configurable controls, playlists, captions, chapter markers, analytics callbacks, and fully remappable keyboard shortcuts.
 
 ---
 
 ## Features
 
 - **Zero dependencies** — Pure React, inline styles, no CSS files to import
-- **Universal sources** — Local/remote MP4, YouTube, Vimeo, Bilibili from one component
+- **Universal sources** — Local/remote MP4, HLS (`.m3u8`, native), YouTube, Vimeo, Bilibili from one component
+- **Controlled playback** — Declarative `playing`, `volume`, `muted`, and `playbackRate` props
+- **Deep customization** — `seekStep`, `volumeStep`, `playbackRates`, `hideControlsDelay`, `showControls` (kiosk mode)
+- **Clip mode** — `endTime` prop stops playback at a custom timestamp
+- **Caption styling** — Style subtitle cues via the `captionStyle` prop (`::cue`)
 - **Playlist support** — Pass a URL array for prev/next controls and auto-advance
 - **Controlled playlists** — Drive the active track externally with `activeIndex` + `onIndexChange`
 - **Captions & subtitles** — WebVTT tracks with a CC picker in the control bar
@@ -284,6 +288,83 @@ const keymap: VPlayerKeymap = {
 <VPlayer src="/video.mp4" keymap={keymap} />
 ```
 
+### Controlled Playback
+
+Drive play/pause, volume, and speed declaratively. The user can still interact
+with the controls; the props re-assert whenever their values change.
+
+```tsx
+const [isPlaying, setIsPlaying] = useState(false);
+
+<VPlayer
+  src="/video.mp4"
+  playing={isPlaying}
+  volume={0.8}
+  playbackRate={1.25}
+  onPlay={() => setIsPlaying(true)}
+  onPause={() => setIsPlaying(false)}
+/>
+```
+
+### HLS Streams
+
+`.m3u8` sources play natively where the browser supports HLS (Safari, iOS, and
+some Android browsers). On unsupported browsers the player shows a clear error
+overlay instead of failing silently.
+
+```tsx
+<VPlayer src="https://cdn.example.com/stream/master.m3u8" />
+```
+
+Check support up front with `VPlayer.canPlay(url)` if you want to fall back to
+an MP4 rendition yourself.
+
+### Clip Mode (endTime)
+
+Play an excerpt: combine `initialTime` with `endTime`. Playback pauses and
+`onEnded` fires when the end timestamp is reached.
+
+```tsx
+<VPlayer src="/movie.mp4" initialTime={60} endTime={90} />
+```
+
+### Caption Styling
+
+Style subtitle cues without any CSS files — rendered via a scoped `::cue` rule:
+
+```tsx
+<VPlayer
+  src="/video.mp4"
+  tracks={[{ src: "/en.vtt", label: "English", lang: "en", default: true }]}
+  captionStyle={{
+    color: "#ffe66d",
+    background: "rgba(0,0,0,0.85)",
+    fontSize: "1.1em",
+  }}
+/>
+```
+
+### Player Behavior Customization
+
+```tsx
+<VPlayer
+  src="/video.mp4"
+  seekStep={10}              // arrow keys jump 10s instead of 5s
+  volumeStep={0.05}          // finer volume control
+  playbackRates={[1, 1.5, 2, 3]} // custom speed menu
+  hideControlsDelay={5000}   // controls stay for 5s of inactivity
+  showControls               // or never hide them at all (kiosk mode)
+/>
+```
+
+### URL Support Detection
+
+```tsx
+VPlayer.canPlay("/video.mp4");                  // true
+VPlayer.canPlay("https://youtu.be/dQw4w9WgXcQ"); // true
+VPlayer.canPlay("https://example.com/page.html"); // false
+```
+
 ### Brand Configuration
 
 ```tsx
@@ -327,20 +408,24 @@ const VPlayer = dynamic(
 );
 ```
 
-### Vanilla JavaScript / CDN
+### Vanilla JavaScript / CDN (no build step)
+
+Use native ES modules via [esm.sh](https://esm.sh), which resolves React
+automatically:
 
 ```html
-<script src="https://unpkg.com/react@19/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@19/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/vplayer-react/dist/index.global.js"></script>
+<div id="player-root"></div>
 
-<script>
-  const root = ReactDOM.createRoot(document.getElementById('player-root'));
-  root.render(
-    React.createElement(VPlayerReact.VPlayer, {
-      src: 'https://example.com/video.mp4',
-      title: 'My Video',
-      accentColor: '#e11d48',
+<script type="module">
+  import React from "https://esm.sh/react@19";
+  import { createRoot } from "https://esm.sh/react-dom@19/client";
+  import { VPlayer } from "https://esm.sh/vplayer-react@1.5.0";
+
+  createRoot(document.getElementById("player-root")).render(
+    React.createElement(VPlayer, {
+      src: "https://example.com/video.mp4",
+      title: "My Video",
+      accentColor: "#e11d48",
     })
   );
 </script>
@@ -374,6 +459,19 @@ const VPlayer = dynamic(
 | `keymap` | `VPlayerKeymap` | — | Override key bindings per action |
 | `activeIndex` | `number` | — | Controlled playlist index |
 | `persistVolume` | `boolean` | `false` | Persist volume to localStorage across reloads |
+| `playing` | `boolean` | — | Controlled play state (declarative play/pause) |
+| `volume` | `number` | — | Controlled volume (0–1), applied on change |
+| `playbackRate` | `number` | — | Controlled playback rate, applied on change |
+| `playbackRates` | `number[]` | `[0.25…2]` | Speeds offered in the rate menu and `<`/`>` keys |
+| `seekStep` | `number` | `5` | Seconds jumped by arrow-key seeking |
+| `volumeStep` | `number` | `0.1` | Volume change per arrow-key press |
+| `hideControlsDelay` | `number` | `3000` | Idle milliseconds before controls hide |
+| `showControls` | `boolean` | `false` | Keep controls always visible (kiosk mode) |
+| `endTime` | `number` | — | Pause and fire `onEnded` at this timestamp |
+| `crossOrigin` | `"anonymous" \| "use-credentials" \| ""` | — | CORS mode for the media element |
+| `disableRemotePlayback` | `boolean` | `false` | Hide Chromecast/AirPlay UI |
+| `disablePictureInPicture` | `boolean` | `false` | Disable PiP and hide its button |
+| `captionStyle` | `CaptionStyle` | — | Subtitle cue styling (`::cue`) |
 | `ref` | `Ref<VPlayerHandle>` | — | Ref for programmatic control |
 
 ### Callbacks
@@ -393,6 +491,13 @@ const VPlayer = dynamic(
 | `onIndexChange` | `(index: number) => void` | Fires when the playlist index changes |
 | `onChapterChange` | `(chapter \| null) => void` | Fires when the current chapter changes |
 | `onVolumeChange` | `(volume, muted) => void` | Fires when volume or mute state changes |
+| `onReady` | `() => void` | Fires once per source when playback can start |
+| `onStart` | `() => void` | Fires once per source on the very first play |
+| `onRateChange` | `(rate: number) => void` | Fires when the playback rate changes |
+| `onDurationChange` | `(duration: number) => void` | Fires when the duration becomes known |
+| `onWaiting` | `() => void` | Fires when playback stalls to buffer |
+| `onEnterPiP` | `() => void` | Fires on entering Picture-in-Picture |
+| `onLeavePiP` | `() => void` | Fires on leaving Picture-in-Picture |
 
 ### Type Shapes
 
@@ -405,6 +510,9 @@ const VPlayer = dynamic(
 
 // ThumbnailConfig
 { src: string; width: number; height: number; count: number }
+
+// CaptionStyle
+{ color?: string; background?: string; fontSize?: string; fontFamily?: string }
 
 // VPlayerKeymap
 Partial<Record<VPlayerAction, string | string[] | false>>
@@ -443,6 +551,7 @@ All shortcuts are **scoped to the player** — they only work when the player ha
 | Platform | Example URLs |
 |----------|-------------|
 | **Native** | `/video.mp4`, `https://cdn.example.com/video.webm` |
+| **HLS** | `https://cdn.example.com/master.m3u8` (native support: Safari, iOS, some Android) |
 | **YouTube** | `https://www.youtube.com/watch?v=ID`, `https://youtu.be/ID`, `https://youtube.com/shorts/ID` |
 | **Vimeo** | `https://vimeo.com/123456789` |
 | **Bilibili** | `https://www.bilibili.com/video/BV1xxxxx`, `https://www.bilibili.com/video/av12345` |
@@ -467,7 +576,16 @@ export type {
 } from 'vplayer-react';
 
 // Utilities
-export { parseVideoSource, formatTime, parseAspectRatio } from 'vplayer-react';
+export {
+  parseVideoSource,
+  formatTime,
+  parseAspectRatio,
+  canPlayUrl,
+  isHlsSource,
+} from 'vplayer-react';
+
+// Static helper
+VPlayer.canPlay(url); // boolean
 ```
 
 ---

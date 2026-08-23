@@ -91,6 +91,51 @@ export interface VPlayerProps {
   onVolumeChange?: (volume: number, muted: boolean) => void;
   /** Custom key bindings — set a binding to false to disable it */
   keymap?: VPlayerKeymap;
+  /** Controlled play state. Set true/false to play/pause declaratively; user interaction still works. */
+  playing?: boolean;
+  /** Controlled volume (0–1). Applied whenever the value changes. */
+  volume?: number;
+  /** Controlled playback rate. Applied whenever the value changes. */
+  playbackRate?: number;
+  /** Available speeds in the playback-rate menu (also used by the < / > shortcuts) */
+  playbackRates?: number[];
+  /** Seconds jumped by arrow-key seeking, default 5 */
+  seekStep?: number;
+  /** Volume change per arrow-key press (0–1), default 0.1 */
+  volumeStep?: number;
+  /** Milliseconds of inactivity before controls auto-hide, default 3000 */
+  hideControlsDelay?: number;
+  /** Force the control bar to stay visible (kiosk/demo mode) */
+  showControls?: boolean;
+  /** Stop playback and fire onEnded at this timestamp (clip/excerpt mode) */
+  endTime?: number;
+  /** CORS setting passed through to the media element */
+  crossOrigin?: "anonymous" | "use-credentials" | "";
+  /** Hide remote-playback (Chromecast/AirPlay) UI on supporting browsers */
+  disableRemotePlayback?: boolean;
+  /** Disable Picture-in-Picture (hides the PiP button and sets the video attribute) */
+  disablePictureInPicture?: boolean;
+  /** Styling for subtitle/caption cues (rendered via ::cue) */
+  captionStyle?: {
+    color?: string;
+    background?: string;
+    fontSize?: string;
+    fontFamily?: string;
+  };
+  /** Fires once per source when the video can start playing */
+  onReady?: () => void;
+  /** Fires once per source on the very first play (not on resume) */
+  onStart?: () => void;
+  /** Fires when the playback rate changes */
+  onRateChange?: (rate: number) => void;
+  /** Fires when the duration becomes available or changes */
+  onDurationChange?: (duration: number) => void;
+  /** Fires when playback stalls to buffer */
+  onWaiting?: () => void;
+  /** Fires when the video enters Picture-in-Picture */
+  onEnterPiP?: () => void;
+  /** Fires when the video leaves Picture-in-Picture */
+  onLeavePiP?: () => void;
 }
 
 export interface VideoState {
@@ -136,4 +181,6 @@ export interface ParsedSource {
   type: VideoSource;
   embedUrl: string;
   videoId: string;
+  /** True when the source is an HLS (.m3u8) playlist, played natively where supported */
+  isHls?: boolean;
 }

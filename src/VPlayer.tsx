@@ -6,12 +6,13 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useId,
   useImperativeHandle,
   forwardRef,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import type { VPlayerProps, VPlayerHandle, VideoState, VPlayerAction } from "./types";
-import { parseVideoSource, formatTime, clamp, parseAspectRatio } from "./utils";
+import { parseVideoSource, formatTime, clamp, parseAspectRatio, canPlayUrl } from "./utils";
 import {
   PlayIcon,
   PauseIcon,
@@ -73,21 +74,25 @@ import {
 const DEFAULT_POSTER =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1920' height='1080' viewBox='0 0 1920 1080'%3E%3Crect fill='%23111' width='1920' height='1080'/%3E%3Ctext x='50%25' y='50%25' dominantBaseline='central' textAnchor='middle' fontFamily='system-ui' fontSize='48' fill='%23333'%3EVideo%3C/text%3E%3C/svg%3E";
 
-const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-const HIDE_CONTROLS_DELAY = 3000;
+const DEFAULT_PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+const DEFAULT_HIDE_CONTROLS_DELAY = 3000;
+// Deliberately shorter than the idle delay: the pointer left the player entirely
+const HIDE_ON_LEAVE_DELAY = 800;
 const VOLUME_STORAGE_KEY = "vplayer-volume";
 
-const SHORTCUTS: [string, string][] = [
-  ["Space / K", "Play / Pause"],
-  ["← / →", "Seek ±5s"],
-  ["Shift+← / →", "Prev / Next chapter"],
-  ["↑ / ↓", "Volume ±10%"],
-  ["F", "Fullscreen"],
-  ["M", "Mute"],
-  ["0–9", "Seek to 0%–90%"],
-  ["< / >", "Speed down / up"],
-  ["?", "Toggle shortcuts"],
-];
+function getShortcuts(seekStep: number, volumeStep: number): [string, string][] {
+  return [
+    ["Space / K", "Play / Pause"],
+    ["← / →", `Seek ±${seekStep}s`],
+    ["Shift+← / →", "Prev / Next chapter"],
+    ["↑ / ↓", `Volume ±${Math.round(volumeStep * 100)}%`],
+    ["F", "Fullscreen"],
+    ["M", "Mute"],
+    ["0–9", "Seek to 0%–90%"],
+    ["< / >", "Speed down / up"],
+    ["?", "Toggle shortcuts"],
+  ];
+}
 
 const DEFAULT_KEYMAP: Record<VPlayerAction, string | string[]> = {
   play:        [" ", "k"],
@@ -110,7 +115,7 @@ function matchesKey(
   return Array.isArray(binding) ? binding.includes(key) : binding === key;
 }
 
-export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
+const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   {
     src,
     poster,
@@ -147,6 +152,26 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     onChapterChange,
     onVolumeChange,
     keymap,
+    playing,
+    volume: volumeProp,
+    playbackRate: playbackRateProp,
+    playbackRates,
+    seekStep = 5,
+    volumeStep = 0.1,
+    hideControlsDelay = DEFAULT_HIDE_CONTROLS_DELAY,
+    showControls: forceShowControls = false,
+    endTime,
+    crossOrigin,
+    disableRemotePlayback = false,
+    disablePictureInPicture = false,
+    captionStyle,
+    onReady,
+    onStart,
+    onRateChange,
+    onDurationChange,
+    onWaiting,
+    onEnterPiP,
+    onLeavePiP,
   },
   ref
 ) {
@@ -172,7 +197,8 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     [isControlled, currentIndex, onIndexChange]
   );
 
-  const activeSrc = srcList[currentIndex] ?? srcList[0];
+  const activeSrc = srcList[currentIndex] ?? srcList[0] ?? "";
+  const hasSource = typeof activeSrc === "string" && activeSrc.length > 0;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -184,6 +210,21 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   const playlistAdvancingRef = useRef(false);
   const initialTimeAppliedRef = useRef(false);
   const currentChapterRef = useRef<string | null>(null);
+  const readyFiredRef = useRef(false);
+  const startFiredRef = useRef(false);
+  const endTimeFiredRef = useRef(false);
+  const clipEndPauseRef = useRef(false);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  const mediaSettingsRef = useRef({ volume: 1, muted: false, rate: 1 });
+  const prevPlayingRef = useRef<boolean | undefined>(undefined);
+  const controlsBarRef = useRef<HTMLDivElement>(null);
+  const instanceId = useId();
+
+  // Latest onSeek for handlers registered in long-lived effects
+  const onSeekRef = useRef(onSeek);
+  useEffect(() => {
+    onSeekRef.current = onSeek;
+  }, [onSeek]);
 
   // Resolve per-track chapters: if chapters is a nested array, pick the current track's chapters
   const activeChapters = useMemo(() => {
@@ -208,6 +249,11 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     [keymap]
   );
 
+  const resolvedRates = useMemo(
+    () => (playbackRates && playbackRates.length > 0 ? playbackRates : DEFAULT_PLAYBACK_RATES),
+    [playbackRates]
+  );
+
   const [state, setState] = useState<VideoState>(() => {
     let volume = muted ? 0 : 1;
     let isMuted = muted;
@@ -218,7 +264,9 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           const vol = parseFloat(stored);
           if (isFinite(vol) && vol >= 0 && vol <= 1) {
             volume = vol;
-            isMuted = vol === 0;
+            // Keep the muted prop's contract (muted autoplay) — the stored
+            // level is only the volume to restore on unmute.
+            isMuted = muted || vol === 0;
           }
         }
       } catch {
@@ -251,25 +299,58 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   const [embedStarted, setEmbedStarted] = useState(false);
   const [supportsPip, setSupportsPip] = useState(false);
   const [activeTrack, setActiveTrack] = useState<number | null>(null);
+  const [hlsUnsupported, setHlsUnsupported] = useState(false);
 
   // Inject keyframes for spinner & detect PiP support
   useEffect(() => {
     injectKeyframes();
-    setSupportsPip("pictureInPictureEnabled" in document);
+    setSupportsPip(!!(document as Document & { pictureInPictureEnabled?: boolean }).pictureInPictureEnabled);
   }, []);
 
-  // Persist volume to localStorage
+  // HLS sources play natively only where the browser supports them (Safari,
+  // iOS, some Chromium builds). Detect and surface a clear error otherwise.
+  useEffect(() => {
+    if (!parsed.isHls) {
+      setHlsUnsupported(false);
+      return;
+    }
+    const probe = document.createElement("video");
+    setHlsUnsupported(
+      probe.canPlayType("application/vnd.apple.mpegurl") === "" &&
+        probe.canPlayType("application/x-mpegURL") === ""
+    );
+  }, [parsed.isHls]);
+
+  // Persist volume to localStorage (debounced — slider drags fire rapidly)
+  const pendingVolumeWriteRef = useRef<string | null>(null);
   useEffect(() => {
     if (!persistVolume) return;
-    try {
-      localStorage.setItem(
-        VOLUME_STORAGE_KEY,
-        String(state.isMuted ? 0 : state.volume)
-      );
-    } catch {
-      // ignore
-    }
+    pendingVolumeWriteRef.current = String(state.isMuted ? 0 : state.volume);
+    const id = setTimeout(() => {
+      try {
+        if (pendingVolumeWriteRef.current !== null) {
+          localStorage.setItem(VOLUME_STORAGE_KEY, pendingVolumeWriteRef.current);
+        }
+      } catch {
+        // ignore
+      }
+      pendingVolumeWriteRef.current = null;
+    }, 250);
+    return () => clearTimeout(id);
   }, [persistVolume, state.volume, state.isMuted]);
+
+  // Flush an unsaved volume write if the player unmounts inside the debounce window
+  useEffect(() => {
+    return () => {
+      if (pendingVolumeWriteRef.current !== null) {
+        try {
+          localStorage.setItem(VOLUME_STORAGE_KEY, pendingVolumeWriteRef.current);
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, []);
 
   // Keep refs in sync for use inside resetHideTimer
   useEffect(() => {
@@ -278,19 +359,28 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   useEffect(() => {
     hasStartedRef.current = state.hasStarted;
   }, [state.hasStarted]);
+  useEffect(() => {
+    mediaSettingsRef.current = {
+      volume: state.volume,
+      muted: state.isMuted,
+      rate: state.playbackRate,
+    };
+  }, [state.volume, state.isMuted, state.playbackRate]);
 
   // Auto-hide controls
   const resetHideTimer = useCallback(() => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    setState((s) => ({ ...s, showControls: true }));
-    if (isPlayingRef.current && hasStartedRef.current) {
+    setState((s) => (s.showControls ? s : { ...s, showControls: true }));
+    if (!forceShowControls && isPlayingRef.current && hasStartedRef.current) {
       hideTimerRef.current = setTimeout(() => {
+        // Never hide the bar out from under keyboard focus
+        if (controlsBarRef.current?.contains(document.activeElement)) return;
         setState((s) => ({ ...s, showControls: false }));
         setShowSpeedMenu(false);
         setShowVolumeSlider(false);
-      }, HIDE_CONTROLS_DELAY);
+      }, hideControlsDelay);
     }
-  }, []);
+  }, [forceShowControls, hideControlsDelay]);
 
   // Fullscreen change listener
   useEffect(() => {
@@ -325,6 +415,12 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     }));
     milestonesFiredRef.current = new Set();
     currentChapterRef.current = null;
+    readyFiredRef.current = false;
+    startFiredRef.current = false;
+    endTimeFiredRef.current = false;
+    clipEndPauseRef.current = false;
+    // Let the controlled-playing effect re-apply `playing` to the new source
+    prevPlayingRef.current = undefined;
     setActiveTrack(null);
     setEmbedStarted(false);
 
@@ -332,18 +428,13 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       playlistAdvancingRef.current = false;
       const v = videoRef.current;
       if (v) {
+        // The browser queues play() until the new source is loadable, so no
+        // canplay listener is needed — and a load error can't strand the
+        // spinner because the error event clears isLoading.
         setState((s) => ({ ...s, hasStarted: true, isLoading: true }));
-        const attemptPlay = () => {
-          v.play()
-            .then(() =>
-              setState((s) => ({ ...s, isPlaying: true, isLoading: false }))
-            )
-            .catch(() => setState((s) => ({ ...s, isPlaying: false })));
-        };
-        v.addEventListener("canplay", attemptPlay, { once: true });
-        return () => {
-          v.removeEventListener("canplay", attemptPlay);
-        };
+        v.play().catch(() =>
+          setState((s) => ({ ...s, isPlaying: false, isLoading: false }))
+        );
       }
     }
   }, [activeSrc]);
@@ -360,7 +451,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   // TextTrack API — switch active caption track
   useEffect(() => {
     const v = videoRef.current;
-    if (!v) return;
+    if (!v || !v.textTracks) return;
 
     const applyModes = () => {
       for (let i = 0; i < v.textTracks.length; i++) {
@@ -369,11 +460,116 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     };
 
     applyModes();
+    // TextTrackList event support is missing in some environments (jsdom)
+    if (typeof v.textTracks.addEventListener !== "function") return;
     v.textTracks.addEventListener("change", applyModes);
     return () => {
       v.textTracks.removeEventListener("change", applyModes);
     };
   }, [activeTrack]);
+
+  // Picture-in-Picture enter/leave callbacks
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const handleEnter = () => onEnterPiP?.();
+    const handleLeave = () => onLeavePiP?.();
+    v.addEventListener("enterpictureinpicture", handleEnter);
+    v.addEventListener("leavepictureinpicture", handleLeave);
+    return () => {
+      v.removeEventListener("enterpictureinpicture", handleEnter);
+      v.removeEventListener("leavepictureinpicture", handleLeave);
+    };
+  }, [onEnterPiP, onLeavePiP, isNative, hasSource]);
+
+  // Remote-playback / PiP opt-outs are set as element properties because
+  // React 18 does not recognize them as attributes.
+  useEffect(() => {
+    const v = videoRef.current as
+      | (HTMLVideoElement & {
+          disableRemotePlayback?: boolean;
+          disablePictureInPicture?: boolean;
+        })
+      | null;
+    if (!v) return;
+    if ("disableRemotePlayback" in v) v.disableRemotePlayback = disableRemotePlayback;
+    if ("disablePictureInPicture" in v) v.disablePictureInPicture = disablePictureInPicture;
+  }, [disableRemotePlayback, disablePictureInPicture, isNative, hasSource]);
+
+  // Controlled `playing` prop — sync on change, and re-apply after a source
+  // change (the src-reset effect above clears prevPlayingRef first).
+  useEffect(() => {
+    if (playing === undefined || playing === prevPlayingRef.current) {
+      prevPlayingRef.current = playing;
+      return;
+    }
+    prevPlayingRef.current = playing;
+    const v = videoRef.current;
+    if (!v || !isNative) return;
+    if (playing) {
+      setState((s) => ({ ...s, hasStarted: true }));
+      v.play().catch(() => setState((s) => ({ ...s, isPlaying: false })));
+    } else {
+      v.pause();
+    }
+  }, [playing, isNative, activeSrc]);
+
+  // Controlled `volume` prop. Volume 0 mutes, but a positive volume never
+  // unmutes — mute stays owned by the muted prop and the user.
+  useEffect(() => {
+    if (volumeProp === undefined) return;
+    const vol = clamp(volumeProp, 0, 1);
+    const v = videoRef.current;
+    if (v) {
+      v.volume = vol;
+      if (vol === 0) v.muted = true;
+    }
+    setState((s) => ({
+      ...s,
+      volume: vol,
+      isMuted: vol === 0 ? true : s.isMuted,
+    }));
+  }, [volumeProp]);
+
+  // `muted` prop — initial value is handled by state init; sync later changes
+  const prevMutedRef = useRef(muted);
+  useEffect(() => {
+    if (muted === prevMutedRef.current) return;
+    prevMutedRef.current = muted;
+    setState((s) => ({ ...s, isMuted: muted }));
+  }, [muted]);
+
+  // Controlled `playbackRate` prop
+  useEffect(() => {
+    if (playbackRateProp === undefined) return;
+    const v = videoRef.current;
+    if (v) v.playbackRate = playbackRateProp;
+    setState((s) => ({ ...s, playbackRate: playbackRateProp }));
+  }, [playbackRateProp]);
+
+  // If the component unmounts mid-drag, remove the window listeners the
+  // drag handlers registered.
+  useEffect(() => {
+    return () => {
+      dragCleanupRef.current?.();
+    };
+  }, []);
+
+  // Menus autoFocus their active item; when a menu closes (unmounting the
+  // focused element), pull focus back into the player so keyboard shortcuts
+  // keep working instead of focus silently dropping to <body>.
+  const anyMenuOpen = showSpeedMenu || showCCMenu || showVolumeSlider;
+  const prevMenuOpenRef = useRef(false);
+  useEffect(() => {
+    const wasOpen = prevMenuOpenRef.current;
+    prevMenuOpenRef.current = anyMenuOpen;
+    if (wasOpen && !anyMenuOpen) {
+      const c = containerRef.current;
+      if (c && !c.contains(document.activeElement)) {
+        c.focus({ preventScroll: true });
+      }
+    }
+  }, [anyMenuOpen]);
 
   // ---- Native Video Event Handlers ----
   const handleLoadedMetadata = useCallback(() => {
@@ -388,9 +584,15 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       v.currentTime = initialTime;
       initialTimeAppliedRef.current = true;
     }
+    // Apply the tracked volume/rate to the element — restores persisted or
+    // controlled values that the element itself doesn't know about yet.
+    const settings = mediaSettingsRef.current;
+    v.volume = settings.volume;
+    if (v.playbackRate !== settings.rate) v.playbackRate = settings.rate;
     setState((s) => ({
       ...s,
-      duration: v.duration,
+      // Live streams report Infinity; keep state.duration finite
+      duration: isFinite(v.duration) ? v.duration : 0,
       currentTime: v.currentTime,
       isLoading: false,
     }));
@@ -406,6 +608,17 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       duration: s.duration > 0 ? s.duration : (isFinite(v.duration) ? v.duration : 0),
     }));
     onTimeUpdate?.(v.currentTime, v.duration);
+    if (endTime && endTime > 0) {
+      if (!endTimeFiredRef.current && v.currentTime >= endTime) {
+        endTimeFiredRef.current = true;
+        clipEndPauseRef.current = true;
+        v.pause();
+        onEnded?.();
+      } else if (endTimeFiredRef.current && v.currentTime < endTime - 1) {
+        // Re-arm when the user seeks back before the clip end
+        endTimeFiredRef.current = false;
+      }
+    }
     if (onMilestone && v.duration > 0) {
       const pct = (v.currentTime / v.duration) * 100;
       for (const milestone of [25, 50, 75, 100] as const) {
@@ -429,7 +642,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
         onChapterChange(current);
       }
     }
-  }, [onTimeUpdate, onMilestone, onChapterChange, activeChapters]);
+  }, [onTimeUpdate, onMilestone, onChapterChange, activeChapters, endTime, onEnded]);
 
   const handleProgress = useCallback(() => {
     const v = videoRef.current;
@@ -442,17 +655,67 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
 
   const handleWaiting = useCallback(() => {
     setState((s) => ({ ...s, isLoading: true }));
-  }, []);
+    onWaiting?.();
+  }, [onWaiting]);
 
   const handleDurationChange = useCallback(() => {
     const v = videoRef.current;
     if (!v || !isFinite(v.duration)) return;
     setState((s) => ({ ...s, duration: v.duration }));
-  }, []);
+    onDurationChange?.(v.duration);
+  }, [onDurationChange]);
 
   const handleCanPlay = useCallback(() => {
     setState((s) => ({ ...s, isLoading: false }));
-  }, []);
+    if (!readyFiredRef.current) {
+      readyFiredRef.current = true;
+      onReady?.();
+    }
+  }, [onReady]);
+
+  // DOM play/pause events are the source of truth for isPlaying — they also
+  // cover autoplay, the ref API, and PiP-window / remote controls.
+  const handleVideoPlay = useCallback(() => {
+    const v = videoRef.current;
+    // Resuming after a clip-end pause restarts the clip instead of playing
+    // past the declared end.
+    if (endTime && endTimeFiredRef.current && v && v.currentTime >= endTime) {
+      v.currentTime = initialTime && initialTime < endTime ? initialTime : 0;
+      endTimeFiredRef.current = false;
+    }
+    isPlayingRef.current = true;
+    hasStartedRef.current = true;
+    setState((s) => ({ ...s, isPlaying: true, hasStarted: true }));
+    if (!startFiredRef.current) {
+      startFiredRef.current = true;
+      onStart?.();
+    }
+    onPlay?.();
+    resetHideTimer();
+  }, [onPlay, onStart, resetHideTimer, endTime, initialTime]);
+
+  const handleVideoPause = useCallback(() => {
+    const v = videoRef.current;
+    isPlayingRef.current = false;
+    setState((s) => ({ ...s, isPlaying: false, showControls: true }));
+    // The browser fires pause right before ended — let onEnded cover that case
+    if (v?.ended) return;
+    // A clip-end pause already reported onEnded; suppress the paired onPause
+    if (clipEndPauseRef.current) {
+      clipEndPauseRef.current = false;
+      return;
+    }
+    onPause?.();
+  }, [onPause]);
+
+  const handleRateChangeEvent = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    setState((s) =>
+      s.playbackRate === v.playbackRate ? s : { ...s, playbackRate: v.playbackRate }
+    );
+    onRateChange?.(v.playbackRate);
+  }, [onRateChange]);
 
   const handleError = useCallback(() => {
     const v = videoRef.current;
@@ -463,6 +726,11 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   }, [onError]);
 
   const handleVideoEnded = useCallback(() => {
+    // The last timeupdate can land short of 100% — guarantee the milestone
+    if (onMilestone && !milestonesFiredRef.current.has(100)) {
+      milestonesFiredRef.current.add(100);
+      onMilestone(100);
+    }
     if (isPlaylist && currentIndex < srcList.length - 1) {
       playlistAdvancingRef.current = true;
       setCurrentIndex((i) => i + 1);
@@ -475,26 +743,26 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       setState((s) => ({ ...s, isPlaying: false, showControls: true }));
       onEnded?.();
     }
-  }, [isPlaylist, currentIndex, srcList.length, loopPlaylist, onNext, onEnded]);
+  }, [isPlaylist, currentIndex, srcList.length, loopPlaylist, onNext, onEnded, onMilestone]);
 
   // ---- Play / Pause ----
+  // isPlaying state and the onPlay/onPause callbacks are driven by the DOM
+  // play/pause events; these helpers only issue the commands.
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) {
+      setState((s) => ({ ...s, hasStarted: true }));
       v.play().catch(() => {
         setState((s) => ({ ...s, isPlaying: false }));
       });
-      setState((s) => ({ ...s, isPlaying: true, hasStarted: true }));
-      onPlay?.();
     } else {
       v.pause();
-      setState((s) => ({ ...s, isPlaying: false, showControls: true }));
-      onPause?.();
     }
-  }, [onPlay, onPause]);
+  }, []);
 
   const startPlayback = useCallback(() => {
+    if (!hasSource || (parsed.isHls && hlsUnsupported)) return;
     if (!isNative) {
       setEmbedStarted(true);
       setState((s) => ({ ...s, hasStarted: true }));
@@ -502,19 +770,18 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     }
     const v = videoRef.current;
     if (!v) return;
+    setState((s) => ({ ...s, hasStarted: true }));
     v.play().catch(() => {
       setState((s) => ({ ...s, isPlaying: false }));
     });
-    setState((s) => ({ ...s, isPlaying: true, hasStarted: true }));
-    onPlay?.();
-  }, [isNative, onPlay]);
+  }, [isNative, hasSource, parsed.isHls, hlsUnsupported]);
 
   // ---- Seek ----
   const handleProgressClick = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
       const v = videoRef.current;
       const bar = progressRef.current;
-      if (!v || !bar) return;
+      if (!v || !bar || !isFinite(v.duration)) return;
       const rect = bar.getBoundingClientRect();
       const pct = clamp((e.clientX - rect.left) / rect.width, 0, 1);
       v.currentTime = pct * v.duration;
@@ -531,21 +798,34 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       const v = videoRef.current;
       const bar = progressRef.current;
       if (!v || !bar) return;
-      const rect = bar.getBoundingClientRect();
 
-      const onMove = (ev: globalThis.MouseEvent) => {
-        const pct = clamp((ev.clientX - rect.left) / rect.width, 0, 1);
+      const seekTo = (clientX: number) => {
+        // Recompute the rect each move — layout can shift mid-drag.
+        // currentTime's setter throws on non-finite values (live streams).
+        if (!isFinite(v.duration)) return;
+        const rect = bar.getBoundingClientRect();
+        const pct = clamp((clientX - rect.left) / rect.width, 0, 1);
         v.currentTime = pct * v.duration;
         setState((s) => ({ ...s, currentTime: v.currentTime }));
       };
 
+      seekTo(e.clientX);
+
+      const onMove = (ev: globalThis.MouseEvent) => seekTo(ev.clientX);
+
       const onUp = () => {
         setIsDragging(false);
-        if (v) onSeek?.(v.currentTime);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
+        onSeekRef.current?.(v.currentTime);
+        removeListeners();
       };
 
+      const removeListeners = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        dragCleanupRef.current = null;
+      };
+
+      dragCleanupRef.current = removeListeners;
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
@@ -553,49 +833,64 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   );
 
   // Attach progress bar touch listener via useEffect with { passive: false }
-  // to avoid "Unable to preventDefault inside passive event listener" console error
+  // to avoid "Unable to preventDefault inside passive event listener" console
+  // error. Depends on the flags that gate the bar's rendering (not on
+  // callbacks) so it attaches exactly when the bar mounts and in-flight drags
+  // survive parent re-renders.
   useEffect(() => {
     const bar = progressRef.current;
     if (!bar) return;
+    let activeDragCleanup: (() => void) | null = null;
 
     const onTouchStart = (e: TouchEvent) => {
       e.preventDefault();
+      // A second finger starts a new drag — drop the previous one's listeners
+      activeDragCleanup?.();
       setIsDragging(true);
       const v = videoRef.current;
       if (!v) return;
-      const rect = bar.getBoundingClientRect();
 
-      const touch = e.touches[0];
-      if (touch) {
-        const pct = clamp((touch.clientX - rect.left) / rect.width, 0, 1);
+      const seekTo = (clientX: number) => {
+        if (!isFinite(v.duration)) return;
+        const rect = bar.getBoundingClientRect();
+        const pct = clamp((clientX - rect.left) / rect.width, 0, 1);
         v.currentTime = pct * v.duration;
         setState((s) => ({ ...s, currentTime: v.currentTime }));
-      }
+      };
+
+      const touch = e.touches[0];
+      if (touch) seekTo(touch.clientX);
 
       const onMove = (ev: TouchEvent) => {
         const t = ev.touches[0];
-        if (!t) return;
-        const pct = clamp((t.clientX - rect.left) / rect.width, 0, 1);
-        v.currentTime = pct * v.duration;
-        setState((s) => ({ ...s, currentTime: v.currentTime }));
+        if (t) seekTo(t.clientX);
+      };
+
+      const cleanup = () => {
+        window.removeEventListener("touchmove", onMove);
+        window.removeEventListener("touchend", onEnd);
+        window.removeEventListener("touchcancel", onEnd);
+        if (activeDragCleanup === cleanup) activeDragCleanup = null;
       };
 
       const onEnd = () => {
         setIsDragging(false);
-        onSeek?.(v.currentTime);
-        window.removeEventListener("touchmove", onMove);
-        window.removeEventListener("touchend", onEnd);
+        onSeekRef.current?.(v.currentTime);
+        cleanup();
       };
 
+      activeDragCleanup = cleanup;
       window.addEventListener("touchmove", onMove, { passive: false });
       window.addEventListener("touchend", onEnd);
+      window.addEventListener("touchcancel", onEnd);
     };
 
     bar.addEventListener("touchstart", onTouchStart, { passive: false });
     return () => {
       bar.removeEventListener("touchstart", onTouchStart);
+      activeDragCleanup?.();
     };
-  }, [onSeek]);
+  }, [isNative, hasSource, state.hasStarted]);
 
   const handleProgressHover = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
@@ -609,6 +904,20 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   );
 
   // ---- Volume ----
+  const setVolumeLevel = useCallback(
+    (vol: number) => {
+      const v = videoRef.current;
+      const level = clamp(vol, 0, 1);
+      if (v) {
+        v.volume = level;
+        v.muted = level === 0;
+      }
+      setState((s) => ({ ...s, volume: level, isMuted: level === 0 }));
+      onVolumeChange?.(level, level === 0);
+    },
+    [onVolumeChange]
+  );
+
   const toggleMute = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -626,34 +935,39 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
 
   const handleVolumeSliderClick = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
-      const v = videoRef.current;
-      const target = e.currentTarget;
-      if (!v) return;
-      const rect = target.getBoundingClientRect();
+      const rect = e.currentTarget.getBoundingClientRect();
       // Vertical slider: bottom = 0%, top = 100%
-      const pct = clamp((rect.bottom - e.clientY) / rect.height, 0, 1);
-      v.volume = pct;
-      v.muted = pct === 0;
-      setState((s) => ({ ...s, volume: pct, isMuted: pct === 0 }));
-      onVolumeChange?.(pct, pct === 0);
+      setVolumeLevel((rect.bottom - e.clientY) / rect.height);
     },
-    [onVolumeChange]
+    [setVolumeLevel]
   );
 
   // ---- Fullscreen ----
   const toggleFullscreen = useCallback(() => {
-    const c = containerRef.current;
-    const v = videoRef.current;
+    const c = containerRef.current as
+      | (HTMLDivElement & { webkitRequestFullscreen?: () => void })
+      | null;
+    const v = videoRef.current as
+      | (HTMLVideoElement & { webkitEnterFullscreen?: () => void })
+      | null;
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element | null;
+      webkitExitFullscreen?: () => void;
+    };
     if (!c) return;
-    if (!document.fullscreenElement) {
+    if (!document.fullscreenElement && !doc.webkitFullscreenElement) {
       if (c.requestFullscreen) {
-        c.requestFullscreen();
-      } else if (v && (v as any).webkitEnterFullscreen) {
+        c.requestFullscreen().catch(() => {});
+      } else if (c.webkitRequestFullscreen) {
+        c.webkitRequestFullscreen();
+      } else if (v?.webkitEnterFullscreen) {
         // iOS Safari fallback — fullscreen the video element directly
-        (v as any).webkitEnterFullscreen();
+        v.webkitEnterFullscreen();
       }
+    } else if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
     } else {
-      document.exitFullscreen?.();
+      doc.webkitExitFullscreen?.();
     }
   }, []);
 
@@ -694,9 +1008,30 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     setShowCCMenu(false);
   }, []);
 
+  // Step through resolvedRates relative to the current rate; handles rates
+  // set from outside the list (e.g. via the playbackRate prop).
+  const stepPlaybackRate = useCallback(
+    (dir: 1 | -1) => {
+      const current = state.playbackRate;
+      const idx = resolvedRates.indexOf(current);
+      let next: number | undefined;
+      if (idx !== -1) {
+        next = resolvedRates[idx + dir];
+      } else if (dir === 1) {
+        next = resolvedRates.find((r) => r > current);
+      } else {
+        next = [...resolvedRates].reverse().find((r) => r < current);
+      }
+      if (next !== undefined) setPlaybackRate(next);
+    },
+    [state.playbackRate, resolvedRates, setPlaybackRate]
+  );
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (!state.isFocused || !isNative) return;
+      // Never swallow browser/OS shortcuts (Cmd+F, Ctrl+R, Alt combos, ...)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const v = videoRef.current;
       if (!v) return;
 
@@ -723,21 +1058,17 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
         togglePlay();
       } else if (matchesKey(e.key, resolvedKeymap.seekBack)) {
         e.preventDefault();
-        v.currentTime = Math.max(0, v.currentTime - 5);
+        v.currentTime = Math.max(0, v.currentTime - seekStep);
       } else if (matchesKey(e.key, resolvedKeymap.seekForward)) {
         e.preventDefault();
-        v.currentTime = Math.min(v.duration, v.currentTime + 5);
+        // NaN duration -> Infinity bound -> plain step forward
+        v.currentTime = Math.min(v.duration || Infinity, v.currentTime + seekStep);
       } else if (matchesKey(e.key, resolvedKeymap.volumeUp)) {
         e.preventDefault();
-        v.volume = clamp(v.volume + 0.1, 0, 1);
-        setState((s) => ({ ...s, volume: v.volume, isMuted: false }));
-        v.muted = false;
-        onVolumeChange?.(v.volume, false);
+        setVolumeLevel((state.isMuted ? 0 : state.volume) + volumeStep);
       } else if (matchesKey(e.key, resolvedKeymap.volumeDown)) {
         e.preventDefault();
-        v.volume = clamp(v.volume - 0.1, 0, 1);
-        setState((s) => ({ ...s, volume: v.volume, isMuted: v.volume === 0 }));
-        onVolumeChange?.(v.volume, v.volume === 0);
+        setVolumeLevel((state.isMuted ? 0 : state.volume) - volumeStep);
       } else if (matchesKey(e.key, resolvedKeymap.fullscreen)) {
         e.preventDefault();
         toggleFullscreen();
@@ -746,13 +1077,10 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
         toggleMute();
       } else if (matchesKey(e.key, resolvedKeymap.speedDown)) {
         e.preventDefault();
-        const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
-        if (idx > 0) setPlaybackRate(PLAYBACK_RATES[idx - 1]);
+        stepPlaybackRate(-1);
       } else if (matchesKey(e.key, resolvedKeymap.speedUp)) {
         e.preventDefault();
-        const idx = PLAYBACK_RATES.indexOf(state.playbackRate);
-        if (idx < PLAYBACK_RATES.length - 1)
-          setPlaybackRate(PLAYBACK_RATES[idx + 1]);
+        stepPlaybackRate(1);
       } else if (matchesKey(e.key, resolvedKeymap.shortcuts)) {
         e.preventDefault();
         setShowShortcuts((prev) => !prev);
@@ -761,26 +1089,99 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
         setShowShortcuts(false);
         setShowSpeedMenu(false);
         setShowCCMenu(false);
+        setShowVolumeSlider(false);
       } else if (/^[0-9]$/.test(e.key)) {
         e.preventDefault();
-        const pct = parseInt(e.key) / 10;
-        v.currentTime = pct * v.duration;
+        if (isFinite(v.duration)) {
+          v.currentTime = (parseInt(e.key) / 10) * v.duration;
+        }
       }
       resetHideTimer();
     },
     [
       state.isFocused,
-      state.playbackRate,
+      state.volume,
+      state.isMuted,
       isNative,
       resolvedKeymap,
       togglePlay,
       toggleFullscreen,
       toggleMute,
-      setPlaybackRate,
+      stepPlaybackRate,
+      setVolumeLevel,
+      seekStep,
+      volumeStep,
       resetHideTimer,
       activeChapters,
-      onVolumeChange,
     ]
+  );
+
+  // Keyboard operation for the seek slider itself (ARIA slider pattern)
+  const handleProgressKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const v = videoRef.current;
+      if (!v) return;
+      let handled = true;
+      switch (e.key) {
+        case "ArrowLeft":
+        case "ArrowDown":
+          v.currentTime = Math.max(0, v.currentTime - seekStep);
+          break;
+        case "ArrowRight":
+        case "ArrowUp":
+          v.currentTime = Math.min(v.duration || Infinity, v.currentTime + seekStep);
+          break;
+        case "Home":
+          v.currentTime = 0;
+          break;
+        case "End":
+          if (isFinite(v.duration)) v.currentTime = v.duration;
+          break;
+        default:
+          handled = false;
+      }
+      if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+        onSeek?.(v.currentTime);
+        resetHideTimer();
+      }
+    },
+    [seekStep, onSeek, resetHideTimer]
+  );
+
+  // Keyboard operation for the volume slider
+  const handleVolumeKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const current = state.isMuted ? 0 : state.volume;
+      let handled = true;
+      switch (e.key) {
+        case "ArrowUp":
+        case "ArrowRight":
+          setVolumeLevel(current + volumeStep);
+          break;
+        case "ArrowDown":
+        case "ArrowLeft":
+          setVolumeLevel(current - volumeStep);
+          break;
+        case "Home":
+          setVolumeLevel(0);
+          break;
+        case "End":
+          setVolumeLevel(1);
+          break;
+        default:
+          handled = false;
+      }
+      if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+        resetHideTimer();
+      }
+    },
+    [state.isMuted, state.volume, volumeStep, setVolumeLevel, resetHideTimer]
   );
 
   // Mouse / touch activity
@@ -789,16 +1190,16 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   }, [resetHideTimer]);
 
   const handleMouseLeave = useCallback(() => {
-    if (isPlayingRef.current) {
+    if (!forceShowControls && isPlayingRef.current) {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
       hideTimerRef.current = setTimeout(() => {
         setState((s) => ({ ...s, showControls: false }));
         setShowSpeedMenu(false);
         setShowVolumeSlider(false);
-      }, 800);
+      }, HIDE_ON_LEAVE_DELAY);
     }
     setHoverProgress(null);
-  }, []);
+  }, [forceShowControls]);
 
   // Compute progress
   const progress =
@@ -825,7 +1226,9 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
 
   const posterUrl = poster || DEFAULT_POSTER;
   const showPoster = !state.hasStarted;
+  const hlsError = !!parsed.isHls && hlsUnsupported;
   const controlsVisible =
+    forceShowControls ||
     state.showControls ||
     !state.isPlaying ||
     isDragging ||
@@ -858,18 +1261,12 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       getCurrentTime: () => videoRef.current?.currentTime ?? 0,
       getDuration: () => videoRef.current?.duration ?? 0,
       getVolume: () => videoRef.current?.volume ?? state.volume,
-      setVolume: (volume: number) => {
-        const v = videoRef.current;
-        if (!v) return;
-        v.volume = clamp(volume, 0, 1);
-        v.muted = volume === 0;
-        setState((s) => ({ ...s, volume: v.volume, isMuted: v.muted }));
-      },
+      setVolume: (volume: number) => setVolumeLevel(volume),
       toggleMute: () => toggleMute(),
       toggleFullscreen: () => toggleFullscreen(),
       getVideoElement: () => videoRef.current,
     }),
-    [state.volume, toggleMute, toggleFullscreen]
+    [state.volume, toggleMute, toggleFullscreen, setVolumeLevel]
   );
 
   return (
@@ -877,6 +1274,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       ref={containerRef}
       className={className}
       data-vplayer-root=""
+      data-vplayer-id={instanceId}
       style={{ ...getContainerStyle(width), ...style }}
       tabIndex={0}
       role="region"
@@ -888,11 +1286,26 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       onMouseLeave={handleMouseLeave}
       onTouchStart={handleMouseMove}
     >
+      {/* Per-instance caption styling via ::cue */}
+      {captionStyle && (
+        <style>
+          {`[data-vplayer-id="${instanceId}"] video::cue {` +
+            (captionStyle.color ? `color:${captionStyle.color};` : "") +
+            (captionStyle.background
+              ? `background-color:${captionStyle.background};`
+              : "") +
+            (captionStyle.fontSize ? `font-size:${captionStyle.fontSize};` : "") +
+            (captionStyle.fontFamily
+              ? `font-family:${captionStyle.fontFamily};`
+              : "") +
+            `}`}
+        </style>
+      )}
       {/* Aspect ratio box */}
       <div data-vplayer-aspect="" style={getAspectBoxStyle(ratio)}>
         <div data-vplayer-inner="" style={getInnerStyle()}>
           {/* ---- Native Video ---- */}
-          {isNative && (
+          {isNative && hasSource && (
             <video
               ref={videoRef}
               src={parsed.embedUrl}
@@ -901,6 +1314,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
               loop={loop}
               autoPlay={autoPlay}
               muted={state.isMuted}
+              crossOrigin={crossOrigin}
               playsInline
               style={getVideoStyle()}
               onLoadedMetadata={handleLoadedMetadata}
@@ -909,9 +1323,13 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
               onProgress={handleProgress}
               onWaiting={handleWaiting}
               onCanPlay={handleCanPlay}
+              onPlay={handleVideoPlay}
+              onPause={handleVideoPause}
+              onRateChange={handleRateChangeEvent}
               onEnded={handleVideoEnded}
               onError={handleError}
               onClick={togglePlay}
+              onDoubleClick={toggleFullscreen}
               aria-hidden="true"
             >
               {tracks?.map((t, i) => (
@@ -943,9 +1361,6 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           <div
             style={getPosterOverlayStyle(posterUrl, showPoster)}
             onClick={showPoster ? startPlayback : undefined}
-            role={showPoster ? "button" : undefined}
-            tabIndex={showPoster ? -1 : undefined}
-            aria-label={showPoster ? "Play video" : undefined}
             aria-hidden={!showPoster}
           >
             <div style={getPosterGradientStyle()} />
@@ -975,13 +1390,17 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           )}
 
           {/* ---- Error State ---- */}
-          {state.error && (
+          {(state.error || hlsError || !hasSource) && (
             <div style={getErrorOverlayStyle()}>
               <ErrorIcon size={40} color={iconColor} />
               <span style={getErrorMessageStyle()}>
-                {state.error.code === 4
-                  ? "This video format is not supported"
-                  : "Video could not be loaded"}
+                {!hasSource
+                  ? "No video source provided"
+                  : hlsError
+                    ? "HLS playback is not supported in this browser"
+                    : state.error?.code === 4
+                      ? "This video format is not supported"
+                      : "Video could not be loaded"}
               </span>
             </div>
           )}
@@ -1010,7 +1429,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                 >
                   Keyboard Shortcuts
                 </div>
-                {SHORTCUTS.map(([key, label]) => (
+                {getShortcuts(seekStep, volumeStep).map(([key, label]) => (
                   <div key={key} style={getShortcutRowStyle()}>
                     <kbd style={getKbdStyle()}>{key}</kbd>
                     <span
@@ -1039,6 +1458,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
               >
                 <button
                   type="button"
+                  autoFocus={activeTrack === null}
                   style={getSpeedMenuItemStyle(
                     activeTrack === null,
                     accentColor
@@ -1054,6 +1474,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                   <button
                     key={i}
                     type="button"
+                    autoFocus={activeTrack === i}
                     style={getSpeedMenuItemStyle(
                       activeTrack === i,
                       accentColor
@@ -1080,10 +1501,11 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                 style={getMenuPanelStyle()}
                 onClick={(e) => e.stopPropagation()}
               >
-                {PLAYBACK_RATES.map((rate) => (
+                {resolvedRates.map((rate) => (
                   <button
                     key={rate}
                     type="button"
+                    autoFocus={state.playbackRate === rate}
                     style={getSpeedMenuItemStyle(
                       state.playbackRate === rate,
                       accentColor
@@ -1109,7 +1531,11 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
 
           {/* ---- Controls (native only) ---- */}
           {isNative && state.hasStarted && (
-            <div style={getControlsBarStyle(controlsVisible)}>
+            <div
+              ref={controlsBarRef}
+              style={getControlsBarStyle(controlsVisible)}
+              onFocus={resetHideTimer}
+            >
               {/* Progress bar */}
               <div
                 ref={progressRef}
@@ -1118,13 +1544,14 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                 onMouseDown={handleProgressMouseDown}
                 onMouseMove={handleProgressHover}
                 onMouseLeave={() => setHoverProgress(null)}
+                onKeyDown={handleProgressKeyDown}
                 role="slider"
                 aria-label="Seek"
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={Math.round(progress)}
                 aria-valuetext={`${formatTime(state.currentTime)} of ${formatTime(state.duration)}`}
-                tabIndex={-1}
+                tabIndex={0}
               >
                 <div
                   style={{
@@ -1236,16 +1663,23 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                     </>
                   )}
 
-                  {/* Volume */}
-                  <div style={getVolumeSliderContainerStyle()}>
+                  {/* Volume — click mutes (matching the accessible name);
+                      the slider popup opens on hover or keyboard focus */}
+                  <div
+                    style={getVolumeSliderContainerStyle()}
+                    onMouseEnter={() => setShowVolumeSlider(true)}
+                    onMouseLeave={() => setShowVolumeSlider(false)}
+                    onFocus={() => setShowVolumeSlider(true)}
+                    onBlur={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        setShowVolumeSlider(false);
+                      }
+                    }}
+                  >
                     <button
                       type="button"
                       style={getControlButtonStyle()}
-                      onClick={() => setShowVolumeSlider((v) => !v)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        toggleMute();
-                      }}
+                      onClick={toggleMute}
                       aria-label={state.isMuted ? "Unmute" : "Mute"}
                       onMouseEnter={(e) => {
                         (
@@ -1265,6 +1699,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                         <div
                           style={getVolumeVerticalTrackStyle()}
                           onClick={handleVolumeSliderClick}
+                          onKeyDown={handleVolumeKeyDown}
                           role="slider"
                           aria-label="Volume"
                           aria-valuemin={0}
@@ -1272,7 +1707,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                           aria-valuenow={Math.round(
                             (state.isMuted ? 0 : state.volume) * 100
                           )}
-                          tabIndex={-1}
+                          tabIndex={0}
                         >
                           <div
                             style={getVolumeVerticalFillStyle(
@@ -1355,7 +1790,7 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                   </button>
 
                   {/* PiP */}
-                  {supportsPip && (
+                  {supportsPip && !disablePictureInPicture && (
                     <button
                       type="button"
                       style={getControlButtonStyle()}
@@ -1411,4 +1846,9 @@ export const VPlayer = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       </div>
     </div>
   );
+});
+
+export const VPlayer = Object.assign(VPlayerBase, {
+  /** Returns true if a URL is recognized as playable (platform link, media file, blob/data URL) */
+  canPlay: canPlayUrl,
 });
