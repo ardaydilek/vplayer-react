@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.1
+
+Discoverability only — no runtime changes.
+
+- **`AGENTS.md` now ships with the package.** A condensed integration guide for coding agents: the whole API on one screen, the source types table, and the mistakes worth avoiding (importing a stylesheet that doesn't exist, adding `hls.js` alongside it, wrapping it in `"use client"` boilerplate it already carries).
+- **npm keywords rewritten** around the phrases people and agents actually search — `react-video-player`, `react-player`, `hls`, `m3u8`, `webvtt`, `react-server-components` and others — and the package description now states the size, the source types and the RSC support in one sentence.
+- README points at `AGENTS.md` and at the markdown mirrors of the docs site.
+
+
 ## 1.6.0
 
 ### Bug fixes

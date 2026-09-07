@@ -2,6 +2,12 @@
 
 A lightweight, dependency-free, production-ready video player for React. Supports local files, HLS streams, YouTube, Vimeo, and Bilibili with brand-configurable controls, playlists, captions, chapter markers, analytics callbacks, and fully remappable keyboard shortcuts.
 
+> **Using a coding agent?** [`AGENTS.md`](./AGENTS.md) is a condensed
+> integration guide — the whole API in one screen, plus the mistakes worth
+> avoiding. There is also a markdown mirror of the docs site at
+> [`/llms.txt`](https://vplayer-nu.vercel.app/llms.txt) and
+> [`/llms-full.txt`](https://vplayer-nu.vercel.app/llms-full.txt).
+
 ---
 
 ## Features
