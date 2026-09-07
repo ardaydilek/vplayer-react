@@ -81,7 +81,8 @@ import {
   getErrorMessageStyle,
   getLoadingOverlayStyle,
   getTitleOverlayStyle,
-  getMenuOverlayStyle,
+  getMenuBackdropStyle,
+  getMenuAnchorStyle,
   getMenuPanelStyle,
   getSpeedMenuItemStyle,
   getTooltipStyle,
@@ -343,6 +344,7 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showCCMenu, setShowCCMenu] = useState(false);
   const [isVolumeDragging, setIsVolumeDragging] = useState(false);
+  const [volumeHover, setVolumeHover] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [hoverProgress, setHoverProgress] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -769,6 +771,10 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   // focused element), pull focus back into the player so keyboard shortcuts
   // keep working instead of focus silently dropping to <body>.
   const anyMenuOpen = showSpeedMenu || showCCMenu;
+  const closeMenus = useCallback(() => {
+    setShowSpeedMenu(false);
+    setShowCCMenu(false);
+  }, []);
   const prevMenuOpenRef = useRef(false);
   useEffect(() => {
     const wasOpen = prevMenuOpenRef.current;
@@ -1633,6 +1639,7 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   // Click mutes (matching the accessible name); the slider popup opens on
   // hover or keyboard focus, so it is never the only way to reach volume.
   const volumeLevel = state.isMuted ? 0 : state.volume;
+  const volumeActive = isVolumeDragging || volumeHover;
   const volumeControl = (
     <div style={getVolumeSliderContainerStyle()}>
       <button
@@ -1652,6 +1659,10 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           style={getVolumeSliderStyle()}
           onPointerDown={handleVolumePointerDown}
           onKeyDown={handleVolumeKeyDown}
+          onPointerEnter={() => setVolumeHover(true)}
+          onPointerLeave={() => setVolumeHover(false)}
+          onFocus={() => setVolumeHover(true)}
+          onBlur={() => setVolumeHover(false)}
           role="slider"
           aria-label="Volume"
           aria-valuemin={0}
@@ -1661,9 +1672,9 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           tabIndex={0}
         >
           <div style={getVolumeTrackStyle()}>
-            <div style={getVolumeFillStyle(volumeLevel)} />
+            <div style={getVolumeFillStyle(volumeLevel, volumeActive)} />
           </div>
-          <div style={getVolumeThumbStyle(volumeLevel, isVolumeDragging)} />
+          <div style={getVolumeThumbStyle(volumeLevel, volumeActive)} />
         </div>
       )}
     </div>
@@ -1734,33 +1745,103 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   const rightGroup = (
     <div style={getControlGroupStyle()}>
       {tracks && tracks.length > 0 && (
+        <div style={getMenuAnchorStyle()}>
+          <button
+            type="button"
+            data-vplayer-btn=""
+            style={buttonStyle}
+            onClick={() => {
+              setShowSpeedMenu(false);
+              setShowCCMenu((open) => !open);
+            }}
+            aria-label="Captions"
+            aria-haspopup="menu"
+            aria-expanded={showCCMenu}
+          >
+            <CCIcon
+              size={20}
+              color={activeTrack !== null ? accentColor : iconColor}
+            />
+          </button>
+          {showCCMenu && (
+            <div data-vplayer-menu="" style={getMenuPanelStyle()} role="menu">
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={activeTrack === null}
+                data-vplayer-menu-item=""
+                autoFocus={activeTrack === null}
+                style={getSpeedMenuItemStyle(activeTrack === null, accentColor)}
+                onClick={() => {
+                  setActiveTrack(null);
+                  setShowCCMenu(false);
+                }}
+              >
+                Off
+              </button>
+              {tracks.map((t, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={activeTrack === i}
+                  data-vplayer-menu-item=""
+                  autoFocus={activeTrack === i}
+                  style={getSpeedMenuItemStyle(activeTrack === i, accentColor)}
+                  onClick={() => {
+                    setActiveTrack(i);
+                    setShowCCMenu(false);
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={getMenuAnchorStyle()}>
         <button
           type="button"
           data-vplayer-btn=""
-          style={buttonStyle}
-          onClick={() => setShowCCMenu(!showCCMenu)}
-          aria-label="Captions"
-          aria-expanded={showCCMenu}
+          style={getSpeedButtonStyle(layoutVariant, state.playbackRate === 1)}
+          onClick={() => {
+            setShowCCMenu(false);
+            setShowSpeedMenu((open) => !open);
+          }}
+          aria-label={`Playback speed: ${state.playbackRate}×`}
+          aria-haspopup="menu"
+          aria-expanded={showSpeedMenu}
         >
-          <CCIcon
-            size={20}
-            color={activeTrack !== null ? accentColor : iconColor}
-          />
+          <span
+            style={state.playbackRate === 1 ? undefined : { color: accentColor }}
+          >
+            {state.playbackRate}×
+          </span>
         </button>
-      )}
-
-      <button
-        type="button"
-        data-vplayer-btn=""
-        style={getSpeedButtonStyle(layoutVariant, state.playbackRate === 1)}
-        onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-        aria-label={`Playback speed: ${state.playbackRate}×`}
-        aria-expanded={showSpeedMenu}
-      >
-        <span style={state.playbackRate === 1 ? undefined : { color: accentColor }}>
-          {state.playbackRate}×
-        </span>
-      </button>
+        {showSpeedMenu && (
+          <div data-vplayer-menu="" style={getMenuPanelStyle()} role="menu">
+            {resolvedRates.map((rate) => (
+              <button
+                key={rate}
+                type="button"
+                role="menuitemradio"
+                aria-checked={state.playbackRate === rate}
+                data-vplayer-menu-item=""
+                autoFocus={state.playbackRate === rate}
+                style={getSpeedMenuItemStyle(
+                  state.playbackRate === rate,
+                  accentColor
+                )}
+                onClick={() => setPlaybackRate(rate)}
+              >
+                {rate === 1 ? "Normal" : `${rate}×`}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {supportsPip && !disablePictureInPicture && !compactControls && (
         <button
@@ -2017,80 +2098,15 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
             </div>
           )}
 
-          {/* ---- CC Menu Overlay ---- */}
-          {showCCMenu && tracks && tracks.length > 0 && (
+          {/* ---- Menu backdrop ----
+              Transparent and below the bar, so a click anywhere else closes
+              the menu while the bar's own controls stay live. */}
+          {anyMenuOpen && (
             <div
-              style={getMenuOverlayStyle()}
-              onClick={() => setShowCCMenu(false)}
-            >
-              <div
-                style={getMenuPanelStyle()}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  data-vplayer-menu-item=""
-                  autoFocus={activeTrack === null}
-                  style={getSpeedMenuItemStyle(
-                    activeTrack === null,
-                    accentColor
-                  )}
-                  onClick={() => {
-                    setActiveTrack(null);
-                    setShowCCMenu(false);
-                  }}
-                >
-                  Off
-                </button>
-                {tracks.map((t, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    data-vplayer-menu-item=""
-                    autoFocus={activeTrack === i}
-                    style={getSpeedMenuItemStyle(
-                      activeTrack === i,
-                      accentColor
-                    )}
-                    onClick={() => {
-                      setActiveTrack(i);
-                      setShowCCMenu(false);
-                    }}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ---- Speed Menu Overlay ---- */}
-          {showSpeedMenu && (
-            <div
-              style={getMenuOverlayStyle()}
-              onClick={() => setShowSpeedMenu(false)}
-            >
-              <div
-                style={getMenuPanelStyle()}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {resolvedRates.map((rate) => (
-                  <button
-                    key={rate}
-                    type="button"
-                    data-vplayer-menu-item=""
-                    autoFocus={state.playbackRate === rate}
-                    style={getSpeedMenuItemStyle(
-                      state.playbackRate === rate,
-                      accentColor
-                    )}
-                    onClick={() => setPlaybackRate(rate)}
-                  >
-                    {rate === 1 ? "Normal" : `${rate}×`}
-                  </button>
-                ))}
-              </div>
-            </div>
+              style={getMenuBackdropStyle()}
+              onClick={closeMenus}
+              aria-hidden="true"
+            />
           )}
 
           {/* ---- Controls (native only) ---- */}

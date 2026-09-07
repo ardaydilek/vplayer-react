@@ -649,6 +649,57 @@ describe("VPlayer control variants", () => {
     expect(container.querySelector('[aria-label="Seek"]')).toBeNull();
   });
 
+  it("anchors each menu to the control that opened it", () => {
+    const { container } = render(
+      <VPlayer src="/clip.mp4" tracks={EN_TRACK} />
+    );
+    act(() => {
+      fireEvent(getVideo(container), new Event("play"));
+    });
+
+    const cc = container.querySelector('[aria-label="Captions"]') as HTMLElement;
+    act(() => {
+      cc.click();
+    });
+    const ccMenu = container.querySelector("[data-vplayer-menu]");
+    // It used to be pinned to the player's bottom-right corner no matter which
+    // control opened it, so the captions list appeared nowhere near the button
+    expect(cc.parentElement!.contains(ccMenu)).toBe(true);
+
+    const speed = container.querySelector(
+      '[aria-label^="Playback speed"]'
+    ) as HTMLElement;
+    act(() => {
+      speed.click();
+    });
+    const menus = container.querySelectorAll("[data-vplayer-menu]");
+    // Opening one closes the other
+    expect(menus.length).toBe(1);
+    expect(speed.parentElement!.contains(menus[0])).toBe(true);
+  });
+
+  it("closes an open menu when the backdrop is clicked", () => {
+    const { container } = render(
+      <VPlayer src="/clip.mp4" tracks={EN_TRACK} />
+    );
+    act(() => {
+      fireEvent(getVideo(container), new Event("play"));
+    });
+    act(() => {
+      (container.querySelector('[aria-label="Captions"]') as HTMLElement).click();
+    });
+    expect(container.querySelector("[data-vplayer-menu]")).not.toBeNull();
+
+    const backdrop = container.querySelector(
+      '[aria-hidden="true"][style*="z-index: 19"]'
+    ) as HTMLElement;
+    expect(backdrop).not.toBeNull();
+    act(() => {
+      backdrop.click();
+    });
+    expect(container.querySelector("[data-vplayer-menu]")).toBeNull();
+  });
+
   it("defaults to the classic stacked layout", () => {
     const { container } = render(<VPlayer src="/clip.mp4" />);
     act(() => {

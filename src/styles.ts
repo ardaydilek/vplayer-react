@@ -524,14 +524,14 @@ export function getVolumeSliderContainerStyle(): React.CSSProperties {
 export function getVolumeSliderStyle(): React.CSSProperties {
   return {
     position: "relative",
-    width: "56px",
+    width: "48px",
     height: "20px",
     display: "flex",
     alignItems: "center",
     cursor: "pointer",
     touchAction: "none",
     flexShrink: 0,
-    marginRight: "4px",
+    marginRight: "2px",
   };
 }
 
@@ -540,29 +540,41 @@ export function getVolumeTrackStyle(): React.CSSProperties {
     position: "absolute",
     left: 0,
     right: 0,
-    height: "4px",
-    backgroundColor: "rgba(255,255,255,0.24)",
+    height: "3px",
+    backgroundColor: "rgba(255,255,255,0.18)",
     borderRadius: "999px",
     overflow: "hidden",
   };
 }
 
 /**
- * White, not the accent: the accent means playback progress, and two accent
- * bars in one row make neither of them mean anything.
+ * Quiet at rest, bright on contact.
+ *
+ * A full-strength white bar beside the accent scrubber is the loudest thing in
+ * the row, and volume is not what anyone is looking at — so it sits back at
+ * 55% until the pointer or keyboard reaches it. White rather than the accent
+ * for the same reason: the accent means playback progress, and two accent bars
+ * in one row make neither of them mean anything.
  */
-export function getVolumeFillStyle(level: number): React.CSSProperties {
+export function getVolumeFillStyle(
+  level: number,
+  isActive: boolean
+): React.CSSProperties {
   return {
     position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
     width: `${level * 100}%`,
-    backgroundColor: "rgba(255,255,255,0.85)",
+    backgroundColor: isActive
+      ? "rgba(255,255,255,0.92)"
+      : "rgba(255,255,255,0.55)",
     borderRadius: "999px",
+    transition: "background-color 0.15s ease-out",
   };
 }
 
+/** Absent until the control is engaged, exactly like the seek thumb. */
 export function getVolumeThumbStyle(
   level: number,
   isActive: boolean
@@ -571,11 +583,11 @@ export function getVolumeThumbStyle(
     position: "absolute",
     left: `${level * 100}%`,
     top: "50%",
-    width: "11px",
-    height: "11px",
+    width: "10px",
+    height: "10px",
     borderRadius: "50%",
     backgroundColor: "#fff",
-    transform: `translate(-50%, -50%) scale(${isActive ? 1.18 : 1})`,
+    transform: `translate(-50%, -50%) scale(${isActive ? 1 : 0})`,
     transition: "transform 0.15s cubic-bezier(0.32, 0.72, 0, 1)",
     boxShadow: "0 1px 3px rgba(0,0,0,0.45)",
     pointerEvents: "none",
@@ -687,33 +699,53 @@ export function getTitleOverlayStyle(): React.CSSProperties {
   };
 }
 
-export function getMenuOverlayStyle(): React.CSSProperties {
+/**
+ * A transparent catcher for clicks outside the menu, sitting just *below* the
+ * control bar so the bar's own buttons stay live — picking a different control
+ * while a menu is open should work, not be swallowed by a scrim. It no longer
+ * tints the video either: dimming the whole frame to choose a playback speed
+ * was a lot of ceremony for a two-item list.
+ */
+export function getMenuBackdropStyle(): React.CSSProperties {
   return {
     position: "absolute",
     inset: 0,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    display: "flex",
-    alignItems: "flex-end",
-    justifyContent: "flex-end",
-    padding: "0 12px 64px 0",
-    zIndex: 35,
+    zIndex: 19,
   };
 }
 
+/**
+ * Anchored to the button that opened it, opening upward.
+ *
+ * It used to be pinned to the bottom-right corner of the player no matter
+ * which control opened it, so the captions list appeared nowhere near the
+ * captions button and the two menus were indistinguishable in place.
+ */
 export function getMenuPanelStyle(): React.CSSProperties {
   return {
+    position: "absolute",
+    bottom: "calc(100% + 8px)",
+    right: 0,
     backgroundColor: "rgba(20,20,22,0.94)",
     borderRadius: "12px",
     padding: "6px",
-    minWidth: "132px",
-    maxHeight: "60%",
+    minWidth: "136px",
+    // A percentage would resolve against the 40px button wrapper
+    maxHeight: "220px",
     overflowY: "auto",
     backdropFilter: "blur(16px)",
     WebkitBackdropFilter: "blur(16px)",
     boxShadow:
       "inset 0 0 0 1px rgba(255,255,255,0.10)," +
       "0 12px 32px -10px rgba(0,0,0,0.7)",
+    zIndex: 5,
+    transformOrigin: "bottom right",
   };
+}
+
+/** Wraps a control that owns a menu, so the menu can anchor to it. */
+export function getMenuAnchorStyle(): React.CSSProperties {
+  return { position: "relative", display: "inline-flex" };
 }
 
 export function getSpeedMenuItemStyle(
@@ -867,6 +899,27 @@ export function injectKeyframes(): void {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
+    /* Menus grow from the control that opened them, never from nowhere */
+    @keyframes vplayer-menu-in {
+      from { opacity: 0; transform: scale(0.94) translateY(4px); }
+      to   { opacity: 1; transform: none; }
+    }
+    [data-vplayer-menu] {
+      animation: vplayer-menu-in 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.22) transparent;
+    }
+    /* Scoped to the menu — the page's own scrollbar is never touched */
+    [data-vplayer-menu]::-webkit-scrollbar {
+      width: 8px;
+    }
+    [data-vplayer-menu]::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    [data-vplayer-menu]::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.22);
+      border-radius: 4px;
+    }
     [data-vplayer-root] {
       border-radius: 12px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -974,6 +1027,9 @@ export function injectKeyframes(): void {
       [data-vplayer-btn]:active,
       [data-vplayer-retry]:active {
         transform: none;
+      }
+      [data-vplayer-menu] {
+        animation: none;
       }
     }
   `;

@@ -741,14 +741,14 @@ function getVolumeSliderContainerStyle() {
 function getVolumeSliderStyle() {
   return {
     position: "relative",
-    width: "56px",
+    width: "48px",
     height: "20px",
     display: "flex",
     alignItems: "center",
     cursor: "pointer",
     touchAction: "none",
     flexShrink: 0,
-    marginRight: "4px"
+    marginRight: "2px"
   };
 }
 function getVolumeTrackStyle() {
@@ -756,21 +756,22 @@ function getVolumeTrackStyle() {
     position: "absolute",
     left: 0,
     right: 0,
-    height: "4px",
-    backgroundColor: "rgba(255,255,255,0.24)",
+    height: "3px",
+    backgroundColor: "rgba(255,255,255,0.18)",
     borderRadius: "999px",
     overflow: "hidden"
   };
 }
-function getVolumeFillStyle(level) {
+function getVolumeFillStyle(level, isActive) {
   return {
     position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
     width: `${level * 100}%`,
-    backgroundColor: "rgba(255,255,255,0.85)",
-    borderRadius: "999px"
+    backgroundColor: isActive ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.55)",
+    borderRadius: "999px",
+    transition: "background-color 0.15s ease-out"
   };
 }
 function getVolumeThumbStyle(level, isActive) {
@@ -778,11 +779,11 @@ function getVolumeThumbStyle(level, isActive) {
     position: "absolute",
     left: `${level * 100}%`,
     top: "50%",
-    width: "11px",
-    height: "11px",
+    width: "10px",
+    height: "10px",
     borderRadius: "50%",
     backgroundColor: "#fff",
-    transform: `translate(-50%, -50%) scale(${isActive ? 1.18 : 1})`,
+    transform: `translate(-50%, -50%) scale(${isActive ? 1 : 0})`,
     transition: "transform 0.15s cubic-bezier(0.32, 0.72, 0, 1)",
     boxShadow: "0 1px 3px rgba(0,0,0,0.45)",
     pointerEvents: "none"
@@ -875,30 +876,34 @@ function getTitleOverlayStyle() {
     pointerEvents: "none"
   };
 }
-function getMenuOverlayStyle() {
+function getMenuBackdropStyle() {
   return {
     position: "absolute",
     inset: 0,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    display: "flex",
-    alignItems: "flex-end",
-    justifyContent: "flex-end",
-    padding: "0 12px 64px 0",
-    zIndex: 35
+    zIndex: 19
   };
 }
 function getMenuPanelStyle() {
   return {
+    position: "absolute",
+    bottom: "calc(100% + 8px)",
+    right: 0,
     backgroundColor: "rgba(20,20,22,0.94)",
     borderRadius: "12px",
     padding: "6px",
-    minWidth: "132px",
-    maxHeight: "60%",
+    minWidth: "136px",
+    // A percentage would resolve against the 40px button wrapper
+    maxHeight: "220px",
     overflowY: "auto",
     backdropFilter: "blur(16px)",
     WebkitBackdropFilter: "blur(16px)",
-    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.10),0 12px 32px -10px rgba(0,0,0,0.7)"
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.10),0 12px 32px -10px rgba(0,0,0,0.7)",
+    zIndex: 5,
+    transformOrigin: "bottom right"
   };
+}
+function getMenuAnchorStyle() {
+  return { position: "relative", display: "inline-flex" };
 }
 function getSpeedMenuItemStyle(isActive, accentColor) {
   return {
@@ -1029,6 +1034,27 @@ function injectKeyframes() {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
+    /* Menus grow from the control that opened them, never from nowhere */
+    @keyframes vplayer-menu-in {
+      from { opacity: 0; transform: scale(0.94) translateY(4px); }
+      to   { opacity: 1; transform: none; }
+    }
+    [data-vplayer-menu] {
+      animation: vplayer-menu-in 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.22) transparent;
+    }
+    /* Scoped to the menu \u2014 the page's own scrollbar is never touched */
+    [data-vplayer-menu]::-webkit-scrollbar {
+      width: 8px;
+    }
+    [data-vplayer-menu]::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    [data-vplayer-menu]::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.22);
+      border-radius: 4px;
+    }
     [data-vplayer-root] {
       border-radius: 12px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -1136,6 +1162,9 @@ function injectKeyframes() {
       [data-vplayer-btn]:active,
       [data-vplayer-retry]:active {
         transform: none;
+      }
+      [data-vplayer-menu] {
+        animation: none;
       }
     }
   `;
@@ -1340,6 +1369,7 @@ var VPlayerBase = (0, import_react2.forwardRef)(function VPlayer({
   const [showSpeedMenu, setShowSpeedMenu] = (0, import_react2.useState)(false);
   const [showCCMenu, setShowCCMenu] = (0, import_react2.useState)(false);
   const [isVolumeDragging, setIsVolumeDragging] = (0, import_react2.useState)(false);
+  const [volumeHover, setVolumeHover] = (0, import_react2.useState)(false);
   const [showShortcuts, setShowShortcuts] = (0, import_react2.useState)(false);
   const [hoverProgress, setHoverProgress] = (0, import_react2.useState)(null);
   const [isDragging, setIsDragging] = (0, import_react2.useState)(false);
@@ -1646,6 +1676,10 @@ var VPlayerBase = (0, import_react2.forwardRef)(function VPlayer({
     };
   }, []);
   const anyMenuOpen = showSpeedMenu || showCCMenu;
+  const closeMenus = (0, import_react2.useCallback)(() => {
+    setShowSpeedMenu(false);
+    setShowCCMenu(false);
+  }, []);
   const prevMenuOpenRef = (0, import_react2.useRef)(false);
   (0, import_react2.useEffect)(() => {
     const wasOpen = prevMenuOpenRef.current;
@@ -2331,6 +2365,7 @@ var VPlayerBase = (0, import_react2.forwardRef)(function VPlayer({
     )
   ] }) : null;
   const volumeLevel = state.isMuted ? 0 : state.volume;
+  const volumeActive = isVolumeDragging || volumeHover;
   const volumeControl = /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getVolumeSliderContainerStyle(), children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       "button",
@@ -2350,6 +2385,10 @@ var VPlayerBase = (0, import_react2.forwardRef)(function VPlayer({
         style: getVolumeSliderStyle(),
         onPointerDown: handleVolumePointerDown,
         onKeyDown: handleVolumeKeyDown,
+        onPointerEnter: () => setVolumeHover(true),
+        onPointerLeave: () => setVolumeHover(false),
+        onFocus: () => setVolumeHover(true),
+        onBlur: () => setVolumeHover(false),
         role: "slider",
         "aria-label": "Volume",
         "aria-valuemin": 0,
@@ -2358,8 +2397,8 @@ var VPlayerBase = (0, import_react2.forwardRef)(function VPlayer({
         "aria-valuetext": `${Math.round(volumeLevel * 100)}% volume`,
         tabIndex: 0,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getVolumeTrackStyle(), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getVolumeFillStyle(volumeLevel) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getVolumeThumbStyle(volumeLevel, isVolumeDragging) })
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getVolumeTrackStyle(), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getVolumeFillStyle(volumeLevel, volumeActive) }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: getVolumeThumbStyle(volumeLevel, volumeActive) })
         ]
       }
     )
@@ -2427,39 +2466,109 @@ var VPlayerBase = (0, import_react2.forwardRef)(function VPlayer({
     }
   );
   const rightGroup = /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getControlGroupStyle(), children: [
-    tracks && tracks.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-      "button",
-      {
-        type: "button",
-        "data-vplayer-btn": "",
-        style: buttonStyle,
-        onClick: () => setShowCCMenu(!showCCMenu),
-        "aria-label": "Captions",
-        "aria-expanded": showCCMenu,
-        children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          CCIcon,
+    tracks && tracks.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getMenuAnchorStyle(), children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "button",
+        {
+          type: "button",
+          "data-vplayer-btn": "",
+          style: buttonStyle,
+          onClick: () => {
+            setShowSpeedMenu(false);
+            setShowCCMenu((open) => !open);
+          },
+          "aria-label": "Captions",
+          "aria-haspopup": "menu",
+          "aria-expanded": showCCMenu,
+          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            CCIcon,
+            {
+              size: 20,
+              color: activeTrack !== null ? accentColor : iconColor
+            }
+          )
+        }
+      ),
+      showCCMenu && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { "data-vplayer-menu": "", style: getMenuPanelStyle(), role: "menu", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "button",
           {
-            size: 20,
-            color: activeTrack !== null ? accentColor : iconColor
+            type: "button",
+            role: "menuitemradio",
+            "aria-checked": activeTrack === null,
+            "data-vplayer-menu-item": "",
+            autoFocus: activeTrack === null,
+            style: getSpeedMenuItemStyle(activeTrack === null, accentColor),
+            onClick: () => {
+              setActiveTrack(null);
+              setShowCCMenu(false);
+            },
+            children: "Off"
           }
-        )
-      }
-    ),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-      "button",
-      {
-        type: "button",
-        "data-vplayer-btn": "",
-        style: getSpeedButtonStyle(layoutVariant, state.playbackRate === 1),
-        onClick: () => setShowSpeedMenu(!showSpeedMenu),
-        "aria-label": `Playback speed: ${state.playbackRate}\xD7`,
-        "aria-expanded": showSpeedMenu,
-        children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: state.playbackRate === 1 ? void 0 : { color: accentColor }, children: [
-          state.playbackRate,
-          "\xD7"
-        ] })
-      }
-    ),
+        ),
+        tracks.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "button",
+          {
+            type: "button",
+            role: "menuitemradio",
+            "aria-checked": activeTrack === i,
+            "data-vplayer-menu-item": "",
+            autoFocus: activeTrack === i,
+            style: getSpeedMenuItemStyle(activeTrack === i, accentColor),
+            onClick: () => {
+              setActiveTrack(i);
+              setShowCCMenu(false);
+            },
+            children: t.label
+          },
+          i
+        ))
+      ] })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: getMenuAnchorStyle(), children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "button",
+        {
+          type: "button",
+          "data-vplayer-btn": "",
+          style: getSpeedButtonStyle(layoutVariant, state.playbackRate === 1),
+          onClick: () => {
+            setShowCCMenu(false);
+            setShowSpeedMenu((open) => !open);
+          },
+          "aria-label": `Playback speed: ${state.playbackRate}\xD7`,
+          "aria-haspopup": "menu",
+          "aria-expanded": showSpeedMenu,
+          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "span",
+            {
+              style: state.playbackRate === 1 ? void 0 : { color: accentColor },
+              children: [
+                state.playbackRate,
+                "\xD7"
+              ]
+            }
+          )
+        }
+      ),
+      showSpeedMenu && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { "data-vplayer-menu": "", style: getMenuPanelStyle(), role: "menu", children: resolvedRates.map((rate) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "button",
+        {
+          type: "button",
+          role: "menuitemradio",
+          "aria-checked": state.playbackRate === rate,
+          "data-vplayer-menu-item": "",
+          autoFocus: state.playbackRate === rate,
+          style: getSpeedMenuItemStyle(
+            state.playbackRate === rate,
+            accentColor
+          ),
+          onClick: () => setPlaybackRate(rate),
+          children: rate === 1 ? "Normal" : `${rate}\xD7`
+        },
+        rate
+      )) })
+    ] }),
     supportsPip && !disablePictureInPicture && !compactControls && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       "button",
       {
@@ -2678,84 +2787,12 @@ var VPlayerBase = (0, import_react2.forwardRef)(function VPlayer({
               )
             }
           ),
-          showCCMenu && tracks && tracks.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          anyMenuOpen && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "div",
             {
-              style: getMenuOverlayStyle(),
-              onClick: () => setShowCCMenu(false),
-              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-                "div",
-                {
-                  style: getMenuPanelStyle(),
-                  onClick: (e) => e.stopPropagation(),
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                      "button",
-                      {
-                        type: "button",
-                        "data-vplayer-menu-item": "",
-                        autoFocus: activeTrack === null,
-                        style: getSpeedMenuItemStyle(
-                          activeTrack === null,
-                          accentColor
-                        ),
-                        onClick: () => {
-                          setActiveTrack(null);
-                          setShowCCMenu(false);
-                        },
-                        children: "Off"
-                      }
-                    ),
-                    tracks.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                      "button",
-                      {
-                        type: "button",
-                        "data-vplayer-menu-item": "",
-                        autoFocus: activeTrack === i,
-                        style: getSpeedMenuItemStyle(
-                          activeTrack === i,
-                          accentColor
-                        ),
-                        onClick: () => {
-                          setActiveTrack(i);
-                          setShowCCMenu(false);
-                        },
-                        children: t.label
-                      },
-                      i
-                    ))
-                  ]
-                }
-              )
-            }
-          ),
-          showSpeedMenu && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            "div",
-            {
-              style: getMenuOverlayStyle(),
-              onClick: () => setShowSpeedMenu(false),
-              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "div",
-                {
-                  style: getMenuPanelStyle(),
-                  onClick: (e) => e.stopPropagation(),
-                  children: resolvedRates.map((rate) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                    "button",
-                    {
-                      type: "button",
-                      "data-vplayer-menu-item": "",
-                      autoFocus: state.playbackRate === rate,
-                      style: getSpeedMenuItemStyle(
-                        state.playbackRate === rate,
-                        accentColor
-                      ),
-                      onClick: () => setPlaybackRate(rate),
-                      children: rate === 1 ? "Normal" : `${rate}\xD7`
-                    },
-                    rate
-                  ))
-                }
-              )
+              style: getMenuBackdropStyle(),
+              onClick: closeMenus,
+              "aria-hidden": "true"
             }
           ),
           isNative && state.hasStarted && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
