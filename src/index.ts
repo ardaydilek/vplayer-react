@@ -7,5 +7,7 @@ export type {
   ParsedSource,
   VPlayerAction,
   VPlayerKeymap,
+  ControlsVariant,
+  CaptionStyle,
 } from "./types";
 export { parseVideoSource, formatTime, parseAspectRatio, canPlayUrl, isHlsSource } from "./utils";

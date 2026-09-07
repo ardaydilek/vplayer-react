@@ -11,7 +11,9 @@ A lightweight, dependency-free, production-ready video player for React. Support
 - **Controlled playback** — Declarative `playing`, `volume`, `muted`, and `playbackRate` props
 - **Deep customization** — `seekStep`, `volumeStep`, `playbackRates`, `hideControlsDelay`, `showControls` (kiosk mode)
 - **Clip mode** — `endTime` prop stops playback at a custom timestamp
-- **Caption styling** — Style subtitle cues via the `captionStyle` prop (`::cue`)
+- **Three control skins** — `controlsVariant`: `classic`, `minimal`, or `floating`
+- **Captions that clear the controls** — cues are drawn inside the picture, above the bar, and stay put when the frame is letterboxed
+- **Caption styling** — Style subtitle cues via the `captionStyle` prop
 - **Playlist support** — Pass a URL array for prev/next controls and auto-advance
 - **Controlled playlists** — Drive the active track externally with `activeIndex` + `onIndexChange`
 - **Captions & subtitles** — WebVTT tracks with a CC picker in the control bar
@@ -330,7 +332,7 @@ Play an excerpt: combine `initialTime` with `endTime`. Playback pauses and
 
 ### Caption Styling
 
-Style subtitle cues without any CSS files — rendered via a scoped `::cue` rule:
+Style subtitle cues without any CSS files:
 
 ```tsx
 <VPlayer
@@ -343,6 +345,44 @@ Style subtitle cues without any CSS files — rendered via a scoped `::cue` rule
   }}
 />
 ```
+
+#### How captions are positioned
+
+The player keeps its `<track>` elements in `hidden` mode and draws the active
+cues itself. The browser's own cue box is anchored to the video *element*,
+which puts it underneath the control bar and — when the frame is letterboxed,
+such as a 16:9 clip fullscreened on a portrait phone — down in the black bar
+below the picture. Drawing them instead means:
+
+- cues sit inside the picture, wherever the letterbox happens to fall
+- cues rise to clear the control bar while it is on screen, and drop back down
+  when it fades
+- cue size tracks the size of the picture, as WebVTT specifies
+- `align` and top-anchored `line` values from the VTT are honoured
+- cue markup (`<b>`, `<i>`, `<u>`, `<ruby>`) is preserved via `getCueAsHTML()`
+
+iOS fullscreen is the one exception: `webkitEnterFullscreen` hands playback to
+the system player, so the track is switched back to `showing` for its duration
+and iOS draws the captions itself.
+
+### Control Bar Variants
+
+Three skins for the native control bar. All three carry exactly the same
+controls — the difference is layout and surface, not capability.
+
+```tsx
+<VPlayer src="/video.mp4" controlsVariant="minimal" />
+```
+
+| Variant | Layout | Reach for it when |
+|---------|--------|-------------------|
+| `classic` *(default)* | Full-width gradient scrim; scrubber on its own row above the buttons | The player carries long sessions and sits on unpredictable footage — the scrim guarantees legibility over any frame |
+| `minimal` | One row; scrubber inline between elapsed and remaining time; almost no scrim | The video is the page — a hero, a product demo, an editorial embed |
+| `floating` | The same single row inside a detached, blurred pill inset from the frame | The player sits inside a product UI and should read as part of it |
+
+`minimal` and `floating` fall back to the stacked arrangement below roughly
+480px, where a single row can no longer hold the scrubber and every control at
+once. No control is ever dropped — only its arrangement changes.
 
 ### Player Behavior Customization
 
@@ -419,7 +459,7 @@ automatically:
 <script type="module">
   import React from "https://esm.sh/react@19";
   import { createRoot } from "https://esm.sh/react-dom@19/client";
-  import { VPlayer } from "https://esm.sh/vplayer-react@1.5.0";
+  import { VPlayer } from "https://esm.sh/vplayer-react@1.6.0";
 
   createRoot(document.getElementById("player-root")).render(
     React.createElement(VPlayer, {
@@ -471,7 +511,8 @@ automatically:
 | `crossOrigin` | `"anonymous" \| "use-credentials" \| ""` | — | CORS mode for the media element |
 | `disableRemotePlayback` | `boolean` | `false` | Hide Chromecast/AirPlay UI |
 | `disablePictureInPicture` | `boolean` | `false` | Disable PiP and hide its button |
-| `captionStyle` | `CaptionStyle` | — | Subtitle cue styling (`::cue`) |
+| `captionStyle` | `CaptionStyle` | — | Subtitle cue styling |
+| `controlsVariant` | `"classic" \| "minimal" \| "floating"` | `"classic"` | Visual style of the native control bar |
 | `ref` | `Ref<VPlayerHandle>` | — | Ref for programmatic control |
 
 ### Callbacks
@@ -513,6 +554,9 @@ automatically:
 
 // CaptionStyle
 { color?: string; background?: string; fontSize?: string; fontFamily?: string }
+
+// ControlsVariant
+"classic" | "minimal" | "floating"
 
 // VPlayerKeymap
 Partial<Record<VPlayerAction, string | string[] | false>>
@@ -570,6 +614,8 @@ export type {
   VPlayerHandle,
   VPlayerAction,
   VPlayerKeymap,
+  ControlsVariant,
+  CaptionStyle,
   VideoSource,
   VideoState,
   ParsedSource,

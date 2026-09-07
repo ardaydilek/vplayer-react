@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.6.0
+
+### Bug fixes
+
+- **Captions no longer sit behind the control bar.** The player now keeps its `<track>` elements in `hidden` mode and draws the active cues itself. The browser's own cue box is anchored to the video *element*, so it rendered underneath the controls; the player's cue layer rises to clear the bar while it is on screen and drops back down when it fades.
+- **Captions stay inside the picture when the frame is letterboxed.** Fullscreening a 16:9 clip on a portrait phone letterboxes the picture into a band in the middle of the screen — native cues landed in the black bar far below it. Cues are now positioned against the video's real content box, so they sit at the bottom of the picture wherever that falls.
+- Cue placement now honours `align` and top-anchored `line` values from the VTT, sizes cues relative to the picture as WebVTT specifies, and preserves cue markup (`<b>`, `<i>`, `<u>`, `<ruby>`) through `getCueAsHTML()`.
+- iOS `webkitEnterFullscreen` hands playback to the system player, so the active track is switched back to `showing` for its duration and iOS keeps drawing captions itself.
+- The fullscreen stylesheet sizes the frame with `height: 100%` instead of `100vh`, so a player fullscreened inside another element is measured correctly.
+- The text-track `change` listener is removed from the captured list rather than a re-read of the live `textTracks` accessor, which could already be detached at teardown.
+
+### Features
+
+- **`controlsVariant` prop** — three skins for the native control bar, carrying identical controls:
+  - `classic` *(default)* — full-width gradient scrim, scrubber stacked above the buttons
+  - `minimal` — one row, scrubber inline between elapsed and remaining time, almost no scrim
+  - `floating` — the same row inside a detached, blurred pill inset from the frame
+
+  `minimal` and `floating` fall back to the stacked arrangement below ~480px, where a single row can no longer hold the scrubber and every control at once. No control is ever dropped.
+- `ControlsVariant` and `CaptionStyle` are now exported types.
+
+### Design
+
+- **Poster play button reworked.** The coloured glow is gone in favour of a stacked neutral shadow with an inner highlight; the button is now sized as a share of the frame (bounded 54–88px) so it neither swamps a small embed nor disappears in a full-bleed hero; the play triangle is optically nudged toward its point; hover grows a translucent ring; press gives `scale(0.96)`.
+- **Poster scrim eased.** The flat radial wash that dimmed the whole poster is now an eased vignette with intermediate stops — no banding, and the artwork stays bright through the mid-ring.
+- Control buttons are 40×40 with a 44px hit area, sized so neighbouring targets meet without overlapping.
+- Hover, press and focus states moved from inline JS handlers into the injected stylesheet, so they are gated behind `(hover: hover) and (pointer: fine)` — no more stuck hover states after a tap on touch devices.
+- Menu items keep a constant font weight across states (selection no longer reflows the row), and menu/popup surfaces use shadow rings instead of solid borders, with radii derived from their padding.
+- The progress thumb scales from a fixed box instead of animating width/height, which removes the sub-pixel jitter at the ends of the track.
+- Every transition now has a `prefers-reduced-motion` path. The loading spinner is deliberately exempt — a frozen spinner reads as a hung player.
+- Focus rings are neutral white and never removed; `touch-action: manipulation` on controls prevents double-tap zoom.
+
+### Accessibility
+
+- Playlist buttons are labelled "Previous video" / "Next video" rather than "Previous" / "Next".
+- The title overlay is `pointer-events: none`, so it can't intercept a click meant for the video.
+- Control bar padding accounts for `env(safe-area-inset-bottom)`.
+
+
 ## 1.5.0
 
 ### Features

@@ -3,6 +3,24 @@ import React, { CSSProperties } from 'react';
 type VideoSource = "native" | "youtube" | "vimeo" | "bilibili";
 type VPlayerAction = "play" | "mute" | "fullscreen" | "seekBack" | "seekForward" | "volumeUp" | "volumeDown" | "speedDown" | "speedUp" | "shortcuts";
 type VPlayerKeymap = Partial<Record<VPlayerAction, string | string[] | false>>;
+/**
+ * Visual style of the native control bar.
+ *
+ * - `classic`  — full-width gradient scrim, scrubber on its own row above the buttons
+ * - `minimal`  — one row, scrubber inline between elapsed and remaining time
+ * - `floating` — the same single row inside a detached, blurred pill
+ *
+ * `minimal` and `floating` fall back to the stacked arrangement below ~480px,
+ * where a single row can't hold the scrubber and every control at once.
+ */
+type ControlsVariant = "classic" | "minimal" | "floating";
+/** Styling for subtitle/caption cues */
+interface CaptionStyle {
+    color?: string;
+    background?: string;
+    fontSize?: string;
+    fontFamily?: string;
+}
 interface VPlayerProps {
     /** Video source URL(s) - local file, YouTube, Vimeo, or Bilibili link. Pass an array for playlist mode. */
     src: string | string[];
@@ -117,13 +135,10 @@ interface VPlayerProps {
     disableRemotePlayback?: boolean;
     /** Disable Picture-in-Picture (hides the PiP button and sets the video attribute) */
     disablePictureInPicture?: boolean;
-    /** Styling for subtitle/caption cues (rendered via ::cue) */
-    captionStyle?: {
-        color?: string;
-        background?: string;
-        fontSize?: string;
-        fontFamily?: string;
-    };
+    /** Styling for subtitle/caption cues */
+    captionStyle?: CaptionStyle;
+    /** Visual style of the native control bar (default: "classic") */
+    controlsVariant?: ControlsVariant;
     /** Fires once per source when the video can start playing */
     onReady?: () => void;
     /** Fires once per source on the very first play (not on resume) */
@@ -211,4 +226,4 @@ declare const VPlayer: React.ForwardRefExoticComponent<VPlayerProps & React.RefA
     canPlay: typeof canPlayUrl;
 };
 
-export { type ParsedSource, VPlayer, type VPlayerAction, type VPlayerHandle, type VPlayerKeymap, type VPlayerProps, type VideoSource, type VideoState, canPlayUrl, formatTime, isHlsSource, parseAspectRatio, parseVideoSource };
+export { type CaptionStyle, type ControlsVariant, type ParsedSource, VPlayer, type VPlayerAction, type VPlayerHandle, type VPlayerKeymap, type VPlayerProps, type VideoSource, type VideoState, canPlayUrl, formatTime, isHlsSource, parseAspectRatio, parseVideoSource };

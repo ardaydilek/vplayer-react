@@ -5,13 +5,20 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useId,
   useImperativeHandle,
   forwardRef,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { VPlayerProps, VPlayerHandle, VideoState, VPlayerAction } from "./types";
+import type {
+  VPlayerProps,
+  VPlayerHandle,
+  VideoState,
+  VPlayerAction,
+  ControlsVariant,
+} from "./types";
 import { parseVideoSource, formatTime, clamp, parseAspectRatio, canPlayUrl } from "./utils";
 import {
   PlayIcon,
@@ -30,6 +37,14 @@ import {
   NextIcon,
 } from "./icons";
 import {
+  snapshotCue,
+  getVideoContentBox,
+  sameContentBox,
+  getCaptionFontSize,
+  type ContentBox,
+  type CueSnapshot,
+} from "./captions";
+import {
   getContainerStyle,
   getAspectBoxStyle,
   getInnerStyle,
@@ -45,9 +60,15 @@ import {
   getProgressFillStyle,
   getProgressThumbStyle,
   getControlsRowStyle,
+  getInlineRowStyle,
+  getControlsShellStyle,
   getControlGroupStyle,
   getControlButtonStyle,
+  getPlayToggleStyle,
   getTimeDisplayStyle,
+  getCaptionLayerStyle,
+  getCaptionRegionStyle,
+  getCaptionCueStyle,
   getVolumeSliderContainerStyle,
   getVolumePopupStyle,
   getVolumeVerticalTrackStyle,
@@ -79,6 +100,10 @@ const DEFAULT_HIDE_CONTROLS_DELAY = 3000;
 // Deliberately shorter than the idle delay: the pointer left the player entirely
 const HIDE_ON_LEAVE_DELAY = 800;
 const VOLUME_STORAGE_KEY = "vplayer-volume";
+/** Breathing room between the last line of captions and the top of the bar */
+const CAPTION_CONTROLS_GAP = 10;
+/** Below this the inline variants stack, because one row can no longer hold them */
+const INLINE_LAYOUT_MIN_WIDTH = 480;
 
 function getShortcuts(seekStep: number, volumeStep: number): [string, string][] {
   return [
@@ -106,6 +131,11 @@ const DEFAULT_KEYMAP: Record<VPlayerAction, string | string[]> = {
   speedUp:     ">",
   shortcuts:   "?",
 };
+
+// Geometry has to be settled before the browser paints, or an inline control
+// bar renders stacked for one frame and visibly snaps.
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 function matchesKey(
   key: string,
@@ -165,6 +195,7 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     disableRemotePlayback = false,
     disablePictureInPicture = false,
     captionStyle,
+    controlsVariant = "classic",
     onReady,
     onStart,
     onRateChange,
@@ -300,6 +331,19 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   const [supportsPip, setSupportsPip] = useState(false);
   const [activeTrack, setActiveTrack] = useState<number | null>(null);
   const [hlsUnsupported, setHlsUnsupported] = useState(false);
+  const [activeCues, setActiveCues] = useState<CueSnapshot[]>([]);
+  // iOS hands `webkitEnterFullscreen` to its own player, which draws the text
+  // tracks itself — our overlay isn't on screen there, so the track has to go
+  // back to `showing` for the duration.
+  const [nativeFullscreen, setNativeFullscreen] = useState(false);
+  const [metrics, setMetrics] = useState<{
+    /** Where the picture sits inside the video element, letterboxing removed */
+    box: ContentBox | null;
+    /** How far captions must rise to clear the control bar */
+    lift: number;
+    /** Outer player width, which decides whether an inline row still fits */
+    width: number;
+  }>({ box: null, lift: 0, width: 0 });
 
   // Inject keyframes for spinner & detect PiP support
   useEffect(() => {
@@ -448,25 +492,165 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     if (defaultIdx !== -1) setActiveTrack(defaultIdx);
   }, [tracks]);
 
-  // TextTrack API — switch active caption track
+  // TextTrack API — switch active caption track.
+  //
+  // The active track runs in `hidden`, not `showing`: it still parses and
+  // still fires `cuechange`, but the browser doesn't paint it. Painting is the
+  // player's job (see the cuechange effect below), because the native cue box
+  // is anchored to the video *element* — underneath the control bar, and out
+  // in the letterbox when the frame doesn't fill the element. The exception is
+  // iOS's own fullscreen player, which is drawing the video itself and needs a
+  // `showing` track to draw captions over it.
+  const trackMode: TextTrackMode = nativeFullscreen ? "showing" : "hidden";
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !v.textTracks) return;
+    // Captured, not re-read on teardown: `textTracks` is a live accessor and
+    // the element may already be detached by then.
+    const list = v.textTracks;
 
     const applyModes = () => {
-      for (let i = 0; i < v.textTracks.length; i++) {
-        v.textTracks[i].mode = i === activeTrack ? "showing" : "disabled";
+      for (let i = 0; i < list.length; i++) {
+        list[i].mode = i === activeTrack ? trackMode : "disabled";
       }
     };
 
     applyModes();
     // TextTrackList event support is missing in some environments (jsdom)
-    if (typeof v.textTracks.addEventListener !== "function") return;
-    v.textTracks.addEventListener("change", applyModes);
+    if (typeof list.addEventListener !== "function") return;
+    list.addEventListener("change", applyModes);
     return () => {
-      v.textTracks.removeEventListener("change", applyModes);
+      list.removeEventListener("change", applyModes);
     };
-  }, [activeTrack]);
+  }, [activeTrack, trackMode, tracks]);
+
+  // Mirror the active track's cues into state so they can be rendered as DOM.
+  useEffect(() => {
+    setActiveCues([]);
+    const v = videoRef.current;
+    if (!v || !v.textTracks || activeTrack === null) return;
+    const track = v.textTracks[activeTrack];
+    if (!track) return;
+
+    const readCues = () => {
+      const cues = track.activeCues;
+      if (!cues || cues.length === 0) {
+        setActiveCues((prev) => (prev.length === 0 ? prev : []));
+        return;
+      }
+      const next: CueSnapshot[] = [];
+      for (let i = 0; i < cues.length; i++) next.push(snapshotCue(cues[i], i));
+      setActiveCues(next);
+    };
+
+    readCues();
+    // TextTrack event support is missing in some environments (jsdom)
+    if (typeof track.addEventListener !== "function") return;
+    track.addEventListener("cuechange", readCues);
+    return () => {
+      track.removeEventListener("cuechange", readCues);
+    };
+  }, [activeTrack, activeSrc, tracks]);
+
+  // iOS fullscreen hands rendering to the system player
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onBegin = () => setNativeFullscreen(true);
+    const onEnd = () => setNativeFullscreen(false);
+    v.addEventListener("webkitbeginfullscreen", onBegin);
+    v.addEventListener("webkitendfullscreen", onEnd);
+    return () => {
+      v.removeEventListener("webkitbeginfullscreen", onBegin);
+      v.removeEventListener("webkitendfullscreen", onEnd);
+    };
+  }, [isNative, hasSource]);
+
+  // ---- Geometry ----
+  //
+  // One pass produces the three numbers the layout depends on, so a resize
+  // costs a single re-render: where the picture actually sits inside the
+  // element, how far captions must rise to clear the control bar, and how wide
+  // the player is.
+  useIsomorphicLayoutEffect(() => {
+    const measure = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const width = container.clientWidth;
+      let box: ContentBox | null = null;
+      let lift = 0;
+
+      const v = videoRef.current;
+      if (v) {
+        box = getVideoContentBox(v);
+        const bar = controlsBarRef.current;
+        if (bar) {
+          const videoRect = v.getBoundingClientRect();
+          const barRect = bar.getBoundingClientRect();
+          // The bar's top padding is the scrim's run-up rather than chrome, so
+          // what captions have to clear is the first real control below it.
+          const padTop =
+            parseFloat(window.getComputedStyle(bar).paddingTop) || 0;
+          const overlap =
+            videoRect.top + box.top + box.height - (barRect.top + padTop);
+          // A letterboxed frame can end above the bar entirely — then there is
+          // nothing to clear and the captions stay where they are.
+          if (overlap > 0) {
+            // On a very short player the bar can cover most of the picture;
+            // capping the rise at half its height keeps captions on the frame
+            // rather than shoving them off the top.
+            lift = Math.round(
+              Math.min(overlap + CAPTION_CONTROLS_GAP, box.height / 2)
+            );
+          }
+        }
+      }
+
+      setMetrics((prev) =>
+        prev.width === width &&
+        prev.lift === lift &&
+        sameContentBox(prev.box, box)
+          ? prev
+          : { width, lift, box }
+      );
+    };
+
+    measure();
+
+    const container = containerRef.current;
+    const v = videoRef.current;
+    const bar = controlsBarRef.current;
+    v?.addEventListener("loadedmetadata", measure);
+    // Fires once the intrinsic dimensions are known, and again if they change
+    v?.addEventListener("resize", measure);
+
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(measure);
+      if (container) observer.observe(container);
+      if (v) observer.observe(v);
+      if (bar) observer.observe(bar);
+    } else if (typeof window !== "undefined") {
+      window.addEventListener("resize", measure);
+    }
+
+    return () => {
+      v?.removeEventListener("loadedmetadata", measure);
+      v?.removeEventListener("resize", measure);
+      observer?.disconnect();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("resize", measure);
+      }
+    };
+  }, [
+    isNative,
+    hasSource,
+    activeSrc,
+    state.hasStarted,
+    state.isFullscreen,
+    controlsVariant,
+    isPlaylist,
+  ]);
 
   // Picture-in-Picture enter/leave callbacks
   useEffect(() => {
@@ -1235,12 +1419,296 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     showSpeedMenu ||
     showCCMenu;
 
+  // ---- Caption + layout derivations ----
+  const layoutVariant: ControlsVariant =
+    controlsVariant !== "classic" && metrics.width < INLINE_LAYOUT_MIN_WIDTH
+      ? "classic"
+      : controlsVariant;
+  const inlineLayout = layoutVariant !== "classic";
+
+  const captionFontSize = getCaptionFontSize(metrics.box?.height ?? 0);
+  const topCues = activeCues.filter((c) => c.region === "top");
+  const bottomCues = activeCues.filter((c) => c.region === "bottom");
+  const showCaptions =
+    isNative && !nativeFullscreen && !!metrics.box && activeCues.length > 0;
+  // Captions only rise while the bar is on screen; when it fades out they drop
+  // back to the bottom of the picture.
+  const captionLift = controlsVisible ? metrics.lift : 0;
+
+  const renderCues = (cues: CueSnapshot[], region: CueSnapshot["region"]) => (
+    <div
+      data-vplayer-caption-region=""
+      style={getCaptionRegionStyle(
+        region,
+        region === "bottom" ? captionLift : 0,
+        captionFontSize
+      )}
+    >
+      {cues.map((cue) => (
+        <span
+          key={cue.key}
+          data-vplayer-cue=""
+          style={getCaptionCueStyle(cue.align, captionStyle)}
+        >
+          {cue.content}
+        </span>
+      ))}
+    </div>
+  );
+
   // Volume icon
   const VolumeIcon = state.isMuted
     ? VolumeMuteIcon
     : state.volume < 0.5
       ? VolumeLowIcon
       : VolumeHighIcon;
+
+  // ---- Control bar pieces ----
+  // Built once and arranged two ways below, so a control can never exist in
+  // one variant and quietly go missing from another.
+  const buttonStyle = getControlButtonStyle(layoutVariant);
+  const timeStyle = getTimeDisplayStyle(layoutVariant);
+  const remainingTime = Math.max(0, state.duration - state.currentTime);
+
+  const playButton = (
+    <button
+      type="button"
+      data-vplayer-btn=""
+      style={getPlayToggleStyle(layoutVariant)}
+      onClick={togglePlay}
+      aria-label={state.isPlaying ? "Pause" : "Play"}
+    >
+      {state.isPlaying ? (
+        <PauseIcon size={20} color={iconColor} />
+      ) : (
+        <PlayIcon
+          size={20}
+          color={iconColor}
+          style={{ transform: "translateX(1px)" }}
+        />
+      )}
+    </button>
+  );
+
+  const playlistButtons = isPlaylist ? (
+    <>
+      {currentIndex > 0 && (
+        <button
+          type="button"
+          data-vplayer-btn=""
+          style={buttonStyle}
+          onClick={() => {
+            setCurrentIndex((i) => i - 1);
+            onPrev?.();
+          }}
+          aria-label="Previous video"
+        >
+          <PrevIcon size={18} color={iconColor} />
+        </button>
+      )}
+      {currentIndex < srcList.length - 1 && (
+        <button
+          type="button"
+          data-vplayer-btn=""
+          style={buttonStyle}
+          onClick={() => {
+            setCurrentIndex((i) => i + 1);
+            onNext?.();
+          }}
+          aria-label="Next video"
+        >
+          <NextIcon size={18} color={iconColor} />
+        </button>
+      )}
+    </>
+  ) : null;
+
+  // Click mutes (matching the accessible name); the slider popup opens on
+  // hover or keyboard focus, so it is never the only way to reach volume.
+  const volumeControl = (
+    <div
+      style={getVolumeSliderContainerStyle()}
+      onMouseEnter={() => setShowVolumeSlider(true)}
+      onMouseLeave={() => setShowVolumeSlider(false)}
+      onFocus={() => setShowVolumeSlider(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setShowVolumeSlider(false);
+        }
+      }}
+    >
+      <button
+        type="button"
+        data-vplayer-btn=""
+        style={buttonStyle}
+        onClick={toggleMute}
+        aria-label={state.isMuted ? "Unmute" : "Mute"}
+      >
+        <VolumeIcon size={20} color={iconColor} />
+      </button>
+      {showVolumeSlider && (
+        <div style={getVolumePopupStyle()}>
+          <div
+            style={getVolumeVerticalTrackStyle()}
+            onClick={handleVolumeSliderClick}
+            onKeyDown={handleVolumeKeyDown}
+            role="slider"
+            aria-label="Volume"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round((state.isMuted ? 0 : state.volume) * 100)}
+            tabIndex={0}
+          >
+            <div
+              style={getVolumeVerticalFillStyle(
+                state.isMuted ? 0 : state.volume,
+                accentColor
+              )}
+            />
+            <div
+              style={getVolumeVerticalThumbStyle(
+                state.isMuted ? 0 : state.volume,
+                accentColor
+              )}
+            />
+          </div>
+          <span style={getVolumeLabelStyle()}>
+            {state.isMuted ? "0%" : `${Math.round(state.volume * 100)}%`}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+
+  const progressBar = (
+    <div
+      ref={progressRef}
+      style={getProgressContainerStyle(layoutVariant)}
+      onClick={handleProgressClick}
+      onMouseDown={handleProgressMouseDown}
+      onMouseMove={handleProgressHover}
+      onMouseLeave={() => setHoverProgress(null)}
+      onKeyDown={handleProgressKeyDown}
+      role="slider"
+      aria-label="Seek"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(progress)}
+      aria-valuetext={`${formatTime(state.currentTime)} of ${formatTime(state.duration)}`}
+      tabIndex={0}
+    >
+      <div
+        style={{
+          ...getProgressTrackStyle(),
+          height: hoverProgress !== null || isDragging ? "6px" : "4px",
+        }}
+      >
+        <div style={getProgressBufferStyle(state.buffered)} />
+        <div style={getProgressFillStyle(progress, accentColor)} />
+        {/* Chapter markers */}
+        {activeChapters &&
+          state.duration > 0 &&
+          activeChapters.map((ch, i) => (
+            <div
+              key={i}
+              style={getChapterMarkerStyle((ch.time / state.duration) * 100)}
+            />
+          ))}
+      </div>
+      <div
+        style={getProgressThumbStyle(
+          progress,
+          accentColor,
+          hoverProgress !== null || isDragging
+        )}
+      />
+      {/* Thumbnail preview */}
+      {thumbFrame !== null && previewThumbnails && hoverProgress !== null && (
+        <div
+          style={getPreviewThumbnailStyle(
+            hoverProgress,
+            previewThumbnails,
+            thumbFrame
+          )}
+        />
+      )}
+      {/* Hover tooltip */}
+      {hoverProgress !== null && state.duration > 0 && (
+        <div style={getTooltipStyle(hoverProgress)}>
+          {nearChapter?.label ??
+            formatTime((hoverProgress / 100) * state.duration)}
+        </div>
+      )}
+    </div>
+  );
+
+  const rightGroup = (
+    <div style={getControlGroupStyle()}>
+      {tracks && tracks.length > 0 && (
+        <button
+          type="button"
+          data-vplayer-btn=""
+          style={buttonStyle}
+          onClick={() => setShowCCMenu(!showCCMenu)}
+          aria-label="Captions"
+          aria-expanded={showCCMenu}
+        >
+          <CCIcon
+            size={18}
+            color={activeTrack !== null ? accentColor : iconColor}
+          />
+        </button>
+      )}
+
+      <button
+        type="button"
+        data-vplayer-btn=""
+        style={{
+          ...buttonStyle,
+          fontSize: "12px",
+          fontWeight: 600,
+          fontVariantNumeric: "tabular-nums",
+        }}
+        onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+        aria-label="Playback speed"
+        aria-expanded={showSpeedMenu}
+      >
+        {state.playbackRate === 1 ? (
+          <SettingsIcon size={18} color={iconColor} />
+        ) : (
+          <span style={{ color: accentColor }}>{state.playbackRate}×</span>
+        )}
+      </button>
+
+      {supportsPip && !disablePictureInPicture && (
+        <button
+          type="button"
+          data-vplayer-btn=""
+          style={buttonStyle}
+          onClick={togglePip}
+          aria-label="Picture in picture"
+        >
+          <PipIcon size={18} color={iconColor} />
+        </button>
+      )}
+
+      <button
+        type="button"
+        data-vplayer-btn=""
+        style={buttonStyle}
+        onClick={toggleFullscreen}
+        aria-label={
+          state.isFullscreen ? "Exit fullscreen" : "Enter fullscreen"
+        }
+      >
+        {state.isFullscreen ? (
+          <ExitFullscreenIcon size={18} color={iconColor} />
+        ) : (
+          <FullscreenIcon size={18} color={iconColor} />
+        )}
+      </button>
+    </div>
+  );
 
   // ---- Imperative handle ----
   useImperativeHandle(
@@ -1357,6 +1825,16 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
             />
           )}
 
+          {/* ---- Captions ----
+              Drawn here rather than by the browser so they can sit inside the
+              picture (not the letterbox) and above the control bar. */}
+          {showCaptions && metrics.box && (
+            <div style={getCaptionLayerStyle(metrics.box)}>
+              {topCues.length > 0 && renderCues(topCues, "top")}
+              {bottomCues.length > 0 && renderCues(bottomCues, "bottom")}
+            </div>
+          )}
+
           {/* ---- Poster Overlay (fade transition) ---- */}
           <div
             style={getPosterOverlayStyle(posterUrl, showPoster)}
@@ -1366,19 +1844,23 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
             <div style={getPosterGradientStyle()} />
             <button
               type="button"
+              data-vplayer-poster-button=""
               style={getPlayButtonLargeStyle(accentColor)}
               tabIndex={showPoster ? 0 : -1}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.transform =
-                  "scale(1.08)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.transform =
-                  "scale(1)";
-              }}
               aria-label="Play video"
             >
-              <PlayIcon size={32} color={iconColor} />
+              {/* A triangle's visual centre sits a third of the way from its
+                  base, so a mathematically centred glyph reads as left of
+                  centre — nudged back toward the point. */}
+              <PlayIcon
+                size={30}
+                color={iconColor}
+                style={{
+                  width: "42%",
+                  height: "42%",
+                  transform: "translateX(4%)",
+                }}
+              />
             </button>
           </div>
 
@@ -1458,6 +1940,7 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
               >
                 <button
                   type="button"
+                  data-vplayer-menu-item=""
                   autoFocus={activeTrack === null}
                   style={getSpeedMenuItemStyle(
                     activeTrack === null,
@@ -1474,6 +1957,7 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                   <button
                     key={i}
                     type="button"
+                    data-vplayer-menu-item=""
                     autoFocus={activeTrack === i}
                     style={getSpeedMenuItemStyle(
                       activeTrack === i,
@@ -1505,24 +1989,15 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                   <button
                     key={rate}
                     type="button"
+                    data-vplayer-menu-item=""
                     autoFocus={state.playbackRate === rate}
                     style={getSpeedMenuItemStyle(
                       state.playbackRate === rate,
                       accentColor
                     )}
                     onClick={() => setPlaybackRate(rate)}
-                    onMouseEnter={(e) => {
-                      (
-                        e.currentTarget as HTMLButtonElement
-                      ).style.backgroundColor = "rgba(255,255,255,0.08)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (
-                        e.currentTarget as HTMLButtonElement
-                      ).style.backgroundColor = "transparent";
-                    }}
                   >
-                    {rate === 1 ? "Normal" : `${rate}x`}
+                    {rate === 1 ? "Normal" : `${rate}×`}
                   </button>
                 ))}
               </div>
@@ -1533,312 +2008,44 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           {isNative && state.hasStarted && (
             <div
               ref={controlsBarRef}
-              style={getControlsBarStyle(controlsVisible)}
+              style={getControlsBarStyle(controlsVisible, layoutVariant)}
               onFocus={resetHideTimer}
             >
-              {/* Progress bar */}
-              <div
-                ref={progressRef}
-                style={getProgressContainerStyle()}
-                onClick={handleProgressClick}
-                onMouseDown={handleProgressMouseDown}
-                onMouseMove={handleProgressHover}
-                onMouseLeave={() => setHoverProgress(null)}
-                onKeyDown={handleProgressKeyDown}
-                role="slider"
-                aria-label="Seek"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(progress)}
-                aria-valuetext={`${formatTime(state.currentTime)} of ${formatTime(state.duration)}`}
-                tabIndex={0}
-              >
-                <div
-                  style={{
-                    ...getProgressTrackStyle(),
-                    height:
-                      hoverProgress !== null || isDragging ? "6px" : "4px",
-                  }}
-                >
-                  <div style={getProgressBufferStyle(state.buffered)} />
-                  <div
-                    style={getProgressFillStyle(progress, accentColor)}
-                  />
-                  {/* Chapter markers */}
-                  {activeChapters &&
-                    state.duration > 0 &&
-                    activeChapters.map((ch, i) => (
-                      <div
-                        key={i}
-                        style={getChapterMarkerStyle(
-                          (ch.time / state.duration) * 100
-                        )}
-                      />
-                    ))}
-                </div>
-                <div
-                  style={getProgressThumbStyle(
-                    progress,
-                    accentColor,
-                    hoverProgress !== null || isDragging
-                  )}
-                />
-                {/* Thumbnail preview */}
-                {thumbFrame !== null &&
-                  previewThumbnails &&
-                  hoverProgress !== null && (
-                    <div
-                      style={getPreviewThumbnailStyle(
-                        hoverProgress,
-                        previewThumbnails,
-                        thumbFrame
-                      )}
-                    />
-                  )}
-                {/* Hover tooltip */}
-                {hoverProgress !== null && state.duration > 0 && (
-                  <div style={getTooltipStyle(hoverProgress)}>
-                    {nearChapter?.label ??
-                      formatTime((hoverProgress / 100) * state.duration)}
+              <div style={getControlsShellStyle(layoutVariant)}>
+                {inlineLayout ? (
+                  // One row: the scrubber stretches between the two readouts.
+                  <div style={getInlineRowStyle()}>
+                    {playButton}
+                    {playlistButtons}
+                    {volumeControl}
+                    <span style={timeStyle}>{formatTime(state.currentTime)}</span>
+                    {progressBar}
+                    <span style={timeStyle}>
+                      {layoutVariant === "minimal"
+                        ? `−${formatTime(remainingTime)}`
+                        : formatTime(state.duration)}
+                    </span>
+                    {rightGroup}
                   </div>
-                )}
-              </div>
-
-              {/* Controls row */}
-              <div style={getControlsRowStyle()}>
-                {/* Left group */}
-                <div style={getControlGroupStyle()}>
-                  <button
-                    type="button"
-                    style={getControlButtonStyle()}
-                    onClick={togglePlay}
-                    aria-label={state.isPlaying ? "Pause" : "Play"}
-                    onMouseEnter={(e) => {
-                      (
-                        e.currentTarget as HTMLButtonElement
-                      ).style.backgroundColor = "rgba(255,255,255,0.12)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (
-                        e.currentTarget as HTMLButtonElement
-                      ).style.backgroundColor = "transparent";
-                    }}
-                  >
-                    {state.isPlaying ? (
-                      <PauseIcon size={20} color={iconColor} />
-                    ) : (
-                      <PlayIcon size={20} color={iconColor} />
-                    )}
-                  </button>
-
-                  {/* Playlist prev / next */}
-                  {isPlaylist && (
-                    <>
-                      {currentIndex > 0 && (
-                        <button
-                          type="button"
-                          style={getControlButtonStyle()}
-                          onClick={() => {
-                            setCurrentIndex((i) => i - 1);
-                            onPrev?.();
-                          }}
-                          aria-label="Previous"
-                        >
-                          <PrevIcon size={18} color={iconColor} />
-                        </button>
-                      )}
-                      {currentIndex < srcList.length - 1 && (
-                        <button
-                          type="button"
-                          style={getControlButtonStyle()}
-                          onClick={() => {
-                            setCurrentIndex((i) => i + 1);
-                            onNext?.();
-                          }}
-                          aria-label="Next"
-                        >
-                          <NextIcon size={18} color={iconColor} />
-                        </button>
-                      )}
-                    </>
-                  )}
-
-                  {/* Volume — click mutes (matching the accessible name);
-                      the slider popup opens on hover or keyboard focus */}
-                  <div
-                    style={getVolumeSliderContainerStyle()}
-                    onMouseEnter={() => setShowVolumeSlider(true)}
-                    onMouseLeave={() => setShowVolumeSlider(false)}
-                    onFocus={() => setShowVolumeSlider(true)}
-                    onBlur={(e) => {
-                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                        setShowVolumeSlider(false);
-                      }
-                    }}
-                  >
-                    <button
-                      type="button"
-                      style={getControlButtonStyle()}
-                      onClick={toggleMute}
-                      aria-label={state.isMuted ? "Unmute" : "Mute"}
-                      onMouseEnter={(e) => {
-                        (
-                          e.currentTarget as HTMLButtonElement
-                        ).style.backgroundColor = "rgba(255,255,255,0.12)";
-                      }}
-                      onMouseLeave={(e) => {
-                        (
-                          e.currentTarget as HTMLButtonElement
-                        ).style.backgroundColor = "transparent";
-                      }}
-                    >
-                      <VolumeIcon size={20} color={iconColor} />
-                    </button>
-                    {showVolumeSlider && (
-                      <div style={getVolumePopupStyle()}>
-                        <div
-                          style={getVolumeVerticalTrackStyle()}
-                          onClick={handleVolumeSliderClick}
-                          onKeyDown={handleVolumeKeyDown}
-                          role="slider"
-                          aria-label="Volume"
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={Math.round(
-                            (state.isMuted ? 0 : state.volume) * 100
-                          )}
-                          tabIndex={0}
-                        >
-                          <div
-                            style={getVolumeVerticalFillStyle(
-                              state.isMuted ? 0 : state.volume,
-                              accentColor
-                            )}
-                          />
-                          <div
-                            style={getVolumeVerticalThumbStyle(
-                              state.isMuted ? 0 : state.volume,
-                              accentColor
-                            )}
-                          />
-                        </div>
-                        <span style={getVolumeLabelStyle()}>
-                          {state.isMuted
-                            ? "0%"
-                            : `${Math.round(state.volume * 100)}%`}
+                ) : (
+                  // Stacked: full-width scrubber above, controls below.
+                  <>
+                    {progressBar}
+                    <div style={getControlsRowStyle()}>
+                      <div style={getControlGroupStyle()}>
+                        {playButton}
+                        {playlistButtons}
+                        {volumeControl}
+                        <span style={timeStyle}>
+                          {formatTime(state.currentTime)}
+                          {" / "}
+                          {formatTime(state.duration)}
                         </span>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Time */}
-                  <span style={getTimeDisplayStyle()}>
-                    {formatTime(state.currentTime)}
-                    {" / "}
-                    {formatTime(state.duration)}
-                  </span>
-                </div>
-
-                {/* Right group */}
-                <div style={getControlGroupStyle()}>
-                  {/* CC button */}
-                  {tracks && tracks.length > 0 && (
-                    <button
-                      type="button"
-                      style={getControlButtonStyle()}
-                      onClick={() => setShowCCMenu(!showCCMenu)}
-                      aria-label="Captions"
-                      aria-expanded={showCCMenu}
-                    >
-                      <CCIcon
-                        size={18}
-                        color={activeTrack !== null ? accentColor : iconColor}
-                      />
-                    </button>
-                  )}
-
-                  {/* Speed */}
-                  <button
-                    type="button"
-                    style={{
-                      ...getControlButtonStyle(),
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      minWidth: "32px",
-                    }}
-                    onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                    aria-label="Playback speed"
-                    aria-expanded={showSpeedMenu}
-                    onMouseEnter={(e) => {
-                      (
-                        e.currentTarget as HTMLButtonElement
-                      ).style.backgroundColor = "rgba(255,255,255,0.12)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (
-                        e.currentTarget as HTMLButtonElement
-                      ).style.backgroundColor = "transparent";
-                    }}
-                  >
-                    {state.playbackRate === 1 ? (
-                      <SettingsIcon size={18} color={iconColor} />
-                    ) : (
-                      <span style={{ color: accentColor }}>
-                        {state.playbackRate}x
-                      </span>
-                    )}
-                  </button>
-
-                  {/* PiP */}
-                  {supportsPip && !disablePictureInPicture && (
-                    <button
-                      type="button"
-                      style={getControlButtonStyle()}
-                      onClick={togglePip}
-                      aria-label="Picture in Picture"
-                      onMouseEnter={(e) => {
-                        (
-                          e.currentTarget as HTMLButtonElement
-                        ).style.backgroundColor = "rgba(255,255,255,0.12)";
-                      }}
-                      onMouseLeave={(e) => {
-                        (
-                          e.currentTarget as HTMLButtonElement
-                        ).style.backgroundColor = "transparent";
-                      }}
-                    >
-                      <PipIcon size={18} color={iconColor} />
-                    </button>
-                  )}
-
-                  {/* Fullscreen */}
-                  <button
-                    type="button"
-                    style={getControlButtonStyle()}
-                    onClick={toggleFullscreen}
-                    aria-label={
-                      state.isFullscreen
-                        ? "Exit fullscreen"
-                        : "Enter fullscreen"
-                    }
-                    onMouseEnter={(e) => {
-                      (
-                        e.currentTarget as HTMLButtonElement
-                      ).style.backgroundColor = "rgba(255,255,255,0.12)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (
-                        e.currentTarget as HTMLButtonElement
-                      ).style.backgroundColor = "transparent";
-                    }}
-                  >
-                    {state.isFullscreen ? (
-                      <ExitFullscreenIcon size={18} color={iconColor} />
-                    ) : (
-                      <FullscreenIcon size={18} color={iconColor} />
-                    )}
-                  </button>
-                </div>
+                      {rightGroup}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}

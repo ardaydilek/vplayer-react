@@ -1,6 +1,6 @@
 {
   "name": "vplayer-react",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "A lightweight, dependency-free React video player supporting local files, YouTube, Vimeo, and Bilibili.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

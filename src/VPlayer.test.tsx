@@ -345,3 +345,254 @@ describe("VPlayer accessibility", () => {
     expect(slider!.getAttribute("tabindex")).toBe("0");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Captions
+// ---------------------------------------------------------------------------
+
+// jsdom parses <track> elements but never populates video.textTracks from
+// them, so the cue pipeline is driven through a stand-in TextTrackList.
+const nativeTextTracks = Object.getOwnPropertyDescriptor(
+  HTMLMediaElement.prototype,
+  "textTracks"
+);
+
+interface FakeTrack {
+  mode: string;
+  activeCues: unknown[];
+  emit(type: string): void;
+  addEventListener(type: string, fn: () => void): void;
+  removeEventListener(type: string, fn: () => void): void;
+}
+
+function cue(text: string, over: Record<string, unknown> = {}) {
+  return {
+    startTime: 1,
+    endTime: 4,
+    text,
+    align: "center",
+    line: "auto",
+    snapToLines: true,
+    ...over,
+  };
+}
+
+function makeTrack(cues: unknown[]): FakeTrack {
+  const listeners = new Map<string, Set<() => void>>();
+  return {
+    mode: "disabled",
+    activeCues: cues,
+    addEventListener(type, fn) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type)!.add(fn);
+    },
+    removeEventListener(type, fn) {
+      listeners.get(type)?.delete(fn);
+    },
+    emit(type) {
+      listeners.get(type)?.forEach((fn) => fn());
+    },
+  };
+}
+
+function installTextTracks(tracks: FakeTrack[]) {
+  const list: Record<string | number, unknown> = {
+    length: tracks.length,
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  tracks.forEach((t, i) => {
+    list[i] = t;
+  });
+  Object.defineProperty(HTMLMediaElement.prototype, "textTracks", {
+    configurable: true,
+    get: () => list,
+  });
+}
+
+function restoreTextTracks() {
+  if (nativeTextTracks) {
+    Object.defineProperty(
+      HTMLMediaElement.prototype,
+      "textTracks",
+      nativeTextTracks
+    );
+  }
+}
+
+const EN_TRACK = [
+  { src: "/en.vtt", label: "English", lang: "en", default: true },
+];
+
+describe("VPlayer captions", () => {
+  afterEach(() => {
+    restoreTextTracks();
+  });
+
+  it("keeps the active track hidden and paints the cues itself", () => {
+    const track = makeTrack([cue("Ada is speaking")]);
+    installTextTracks([track]);
+    const { container } = render(
+      <VPlayer src="/clip.mp4" tracks={EN_TRACK} />
+    );
+    // `showing` would let the browser draw cues under the control bar
+    expect(track.mode).toBe("hidden");
+    expect(container.textContent).toContain("Ada is speaking");
+  });
+
+  it("renders nothing while the track is switched off", () => {
+    const track = makeTrack([cue("Should not appear")]);
+    installTextTracks([track]);
+    const { container } = render(
+      <VPlayer
+        src="/clip.mp4"
+        tracks={[{ src: "/en.vtt", label: "English", lang: "en" }]}
+      />
+    );
+    expect(track.mode).toBe("disabled");
+    expect(container.querySelector("[data-vplayer-cue]")).toBeNull();
+  });
+
+  it("follows cuechange", () => {
+    const track = makeTrack([cue("First line")]);
+    installTextTracks([track]);
+    const { container } = render(
+      <VPlayer src="/clip.mp4" tracks={EN_TRACK} />
+    );
+    expect(container.textContent).toContain("First line");
+
+    act(() => {
+      track.activeCues = [cue("Second line")];
+      track.emit("cuechange");
+    });
+    expect(container.textContent).toContain("Second line");
+    expect(container.textContent).not.toContain("First line");
+
+    act(() => {
+      track.activeCues = [];
+      track.emit("cuechange");
+    });
+    expect(container.querySelector("[data-vplayer-cue]")).toBeNull();
+  });
+
+  it("renders simultaneous cues as separate lines", () => {
+    installTextTracks([makeTrack([cue("Ada:"), cue("Hello")])]);
+    const { container } = render(
+      <VPlayer src="/clip.mp4" tracks={EN_TRACK} />
+    );
+    expect(container.querySelectorAll("[data-vplayer-cue]").length).toBe(2);
+  });
+
+  it("splits cues into top and bottom regions", () => {
+    installTextTracks([
+      makeTrack([cue("On screen text", { line: 0 }), cue("Dialogue")]),
+    ]);
+    const { container } = render(
+      <VPlayer src="/clip.mp4" tracks={EN_TRACK} />
+    );
+    const regions = container.querySelectorAll("[data-vplayer-caption-region]");
+    expect(regions.length).toBe(2);
+  });
+
+  it("applies captionStyle to the rendered cue", () => {
+    installTextTracks([makeTrack([cue("Styled")])]);
+    const { container } = render(
+      <VPlayer
+        src="/clip.mp4"
+        tracks={EN_TRACK}
+        captionStyle={{ color: "yellow", background: "transparent" }}
+      />
+    );
+    const el = container.querySelector("[data-vplayer-cue]") as HTMLElement;
+    expect(el).not.toBeNull();
+    expect(el.style.color).toBe("yellow");
+    expect(el.style.backgroundColor).toBe("transparent");
+  });
+
+  it("preserves cue markup when getCueAsHTML is available", () => {
+    const fragment = document.createDocumentFragment();
+    const bold = document.createElement("b");
+    bold.textContent = "Loud";
+    fragment.append(bold, document.createTextNode(" and clear"));
+    installTextTracks([
+      makeTrack([cue("<b>Loud</b> and clear", { getCueAsHTML: () => fragment })]),
+    ]);
+    const { container } = render(
+      <VPlayer src="/clip.mp4" tracks={EN_TRACK} />
+    );
+    const el = container.querySelector("[data-vplayer-cue]") as HTMLElement;
+    expect(el.querySelector("b")?.textContent).toBe("Loud");
+    expect(el.textContent).toBe("Loud and clear");
+  });
+
+  it("pins the cue layer to the picture, not the letterboxed element", () => {
+    installTextTracks([makeTrack([cue("In the band")])]);
+    const { container } = render(
+      <VPlayer src="/clip.mp4" tracks={EN_TRACK} />
+    );
+    const video = getVideo(container);
+    // A 16:9 source fullscreened on a portrait phone
+    for (const [prop, value] of [
+      ["clientWidth", 390],
+      ["clientHeight", 844],
+      ["videoWidth", 1920],
+      ["videoHeight", 1080],
+    ] as const) {
+      Object.defineProperty(video, prop, { configurable: true, value });
+    }
+    act(() => {
+      // No ResizeObserver in jsdom, so the window fallback drives the remeasure
+      fireEvent(window, new Event("resize"));
+    });
+
+    const layer = container.querySelector(
+      "[data-vplayer-caption-region]"
+    )!.parentElement as HTMLElement;
+    // 390 / (16/9) = 219.375, centred in 844 -> top 312.3125
+    expect(parseFloat(layer.style.height)).toBeCloseTo(219.375, 2);
+    expect(parseFloat(layer.style.top)).toBeCloseTo(312.3125, 2);
+    // The layer ends well above the bottom of the element, where the bar lives
+    expect(parseFloat(layer.style.top) + parseFloat(layer.style.height)).toBeLessThan(844);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Control variants
+// ---------------------------------------------------------------------------
+
+describe("VPlayer control variants", () => {
+  const variants = ["classic", "minimal", "floating"] as const;
+
+  for (const variant of variants) {
+    it(`renders every control in the ${variant} variant`, () => {
+      const { container } = render(
+        <VPlayer src="/clip.mp4" controlsVariant={variant} tracks={EN_TRACK} />
+      );
+      act(() => {
+        fireEvent(getVideo(container), new Event("play"));
+      });
+      for (const label of [
+        "Pause",
+        "Mute",
+        "Seek",
+        "Captions",
+        "Playback speed",
+        "Enter fullscreen",
+      ]) {
+        expect(
+          container.querySelector(`[aria-label="${label}"]`),
+          `${label} missing from ${variant}`
+        ).not.toBeNull();
+      }
+    });
+  }
+
+  it("defaults to the classic stacked layout", () => {
+    const { container } = render(<VPlayer src="/clip.mp4" />);
+    act(() => {
+      fireEvent(getVideo(container), new Event("play"));
+    });
+    const seek = container.querySelector('[aria-label="Seek"]') as HTMLElement;
+    expect(seek.style.width).toBe("100%");
+  });
+});
