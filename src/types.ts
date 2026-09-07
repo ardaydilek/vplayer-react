@@ -22,8 +22,10 @@ export type VPlayerKeymap = Partial<Record<VPlayerAction, string | string[] | fa
  * - `minimal`  — one row, scrubber inline between elapsed and remaining time
  * - `floating` — the same single row inside a detached, blurred pill
  *
- * `minimal` and `floating` fall back to the stacked arrangement below ~480px,
- * where a single row can't hold the scrubber and every control at once.
+ * `minimal` and `floating` fall back to the stacked arrangement below ~580px,
+ * where a single row can't hold the scrubber and every control at once. Below
+ * ~480px the volume slider drops to just its mute toggle, and below ~400px the
+ * time readout loses its duration half and Picture-in-Picture steps aside.
  */
 export type ControlsVariant = "classic" | "minimal" | "floating";
 

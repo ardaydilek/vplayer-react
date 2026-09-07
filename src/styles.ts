@@ -114,37 +114,44 @@ export function getPosterGradientStyle(): React.CSSProperties {
 }
 
 /**
- * Depth comes from a stacked neutral shadow plus an inner highlight, not from
- * a coloured glow — a wash of accent behind an accent disc reads as a bloom
- * artefact rather than as elevation. Hover, press, focus and the expanding
- * ring live in the injected stylesheet so they can be gated behind
- * `(hover: hover)` and `prefers-reduced-motion`.
+ * Glass, not a brand-coloured disc.
+ *
+ * A saturated circle stamped over someone's poster art competes with it and
+ * dates fast; a translucent, blurred disc borrows the artwork underneath, so
+ * it reads as part of the frame instead of as a sticker on top of it. The
+ * accent colour keeps one job — playback progress — rather than being the
+ * loudest thing on two different surfaces.
+ *
+ * Hover, press, focus and the expanding ring live in the injected stylesheet
+ * so they can be gated behind `(hover: hover)` and `prefers-reduced-motion`.
  */
-export function getPlayButtonLargeStyle(
-  accentColor: string
-): React.CSSProperties {
+export function getPlayButtonLargeStyle(): React.CSSProperties {
   return {
     position: "relative",
     zIndex: 1,
     // Sized as a share of the frame rather than a fixed 72px, so it neither
     // swamps a 320px embed nor disappears in a full-bleed hero — bounded at
     // both ends so it stays a real hit target and never becomes a billboard.
-    width: "7.5%",
-    minWidth: "54px",
-    maxWidth: "88px",
+    width: "7%",
+    minWidth: "56px",
+    maxWidth: "84px",
     aspectRatio: "1",
     borderRadius: "50%",
-    backgroundColor: accentColor,
+    // Dark glass, not light: a white triangle needs something behind it on a
+    // bright poster, and the ring keeps the disc visible on a dark one.
+    backgroundColor: "rgba(16,16,20,0.40)",
+    backdropFilter: "blur(16px) saturate(1.4)",
+    WebkitBackdropFilter: "blur(16px) saturate(1.4)",
     border: "none",
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     boxShadow:
+      "inset 0 0 0 1px rgba(255,255,255,0.34)," +
       "inset 0 1px 0 rgba(255,255,255,0.22)," +
-      "inset 0 0 0 1px rgba(255,255,255,0.10)," +
-      "0 2px 4px rgba(0,0,0,0.22)," +
-      "0 14px 34px -10px rgba(0,0,0,0.55)",
+      "0 2px 6px rgba(0,0,0,0.3)," +
+      "0 16px 40px -12px rgba(0,0,0,0.7)",
     padding: 0,
     touchAction: "manipulation",
   };
@@ -227,7 +234,8 @@ export function getCaptionCueStyle(
  */
 export function getControlsBarStyle(
   visible: boolean,
-  variant: ControlsVariant
+  variant: ControlsVariant,
+  compact = false
 ): React.CSSProperties {
   const scrim: Record<ControlsVariant, string> = {
     classic:
@@ -248,7 +256,9 @@ export function getControlsBarStyle(
     minimal: ["34px", "14px"],
     floating: ["40px", "12px"],
   };
-  const [padTop, padSide] = padding[variant];
+  const [padTop, padSideDefault] = padding[variant];
+  // A narrow bar needs the horizontal room more than it needs the margin
+  const padSide = compact ? "8px" : padSideDefault;
   return {
     position: "absolute",
     bottom: 0,
@@ -405,9 +415,10 @@ export function getControlGroupStyle(): React.CSSProperties {
 }
 
 /**
- * 40×40 visual box, extended to 44 by the `::before` bleed in the stylesheet.
- * The 4px group gap is exactly consumed by two 2px bleeds, so neighbouring
- * targets meet without ever overlapping.
+ * 36×40 visual box for a 20px glyph — 8px of air each side rather than 11,
+ * which is what made the old row read as strung out. The `::before` bleed in
+ * the stylesheet takes the target to 40×44; two 2px bleeds exactly consume the
+ * 4px group gap, so neighbouring targets meet without ever overlapping.
  */
 export function getControlButtonStyle(
   variant: ControlsVariant = "classic"
@@ -418,17 +429,41 @@ export function getControlButtonStyle(
     border: "none",
     cursor: "pointer",
     padding: 0,
-    minWidth: "40px",
+    minWidth: "36px",
     height: "40px",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: variant === "floating" ? "8px" : "10px",
+    borderRadius: variant === "floating" ? "8px" : "9px",
     transition: "background-color 0.15s ease-out",
     color: "#fff",
     lineHeight: 1,
     flexShrink: 0,
     touchAction: "manipulation",
+  };
+}
+
+/**
+ * The speed control is a number, not a pictogram — a gear says "settings",
+ * and this menu only ever changes the rate. Showing `1×` outright removes the
+ * busiest glyph from the row and says what the control does.
+ */
+export function getSpeedButtonStyle(
+  variant: ControlsVariant,
+  isDefaultRate: boolean
+): React.CSSProperties {
+  return {
+    ...getControlButtonStyle(variant),
+    // Wide enough for "0.25×" so the row can't shift as the rate changes
+    minWidth: "46px",
+    padding: "0 6px",
+    fontSize: "12.5px",
+    // Weight and figure width are constant across states: neither selecting a
+    // rate nor ticking past 9 may reflow the bar.
+    fontWeight: 600,
+    fontVariantNumeric: "tabular-nums",
+    letterSpacing: "0.01em",
+    color: isDefaultRate ? "rgba(255,255,255,0.9)" : "#fff",
   };
 }
 
@@ -440,7 +475,9 @@ export function getPlayToggleStyle(
   if (variant === "classic") return base;
   return {
     ...base,
-    width: "40px",
+    width: "36px",
+    minWidth: "36px",
+    height: "36px",
     borderRadius: "50%",
     backgroundColor: "rgba(255,255,255,0.16)",
     boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.12)",
@@ -465,91 +502,83 @@ export function getTimeDisplayStyle(
 // Volume
 // ---------------------------------------------------------------------------
 
+/**
+ * Volume is a button plus an inline horizontal slider that is simply always
+ * there.
+ *
+ * The old design hid the slider in a popup that opened on hover, which put the
+ * only pointer route to volume behind a capability touch devices don't have,
+ * and made a fiddly vertical drag out of a control every other player renders
+ * flat. Reserving ~60px permanently costs nothing in the inline skins (the
+ * scrubber flexes around it) and removes a hidden interaction entirely.
+ */
 export function getVolumeSliderContainerStyle(): React.CSSProperties {
   return {
     display: "flex",
     alignItems: "center",
+    gap: "2px",
     position: "relative",
   };
 }
 
-export function getVolumePopupStyle(): React.CSSProperties {
+export function getVolumeSliderStyle(): React.CSSProperties {
   return {
-    position: "absolute",
-    // Touches the top of the volume button so the pointer can travel from
-    // button to popup without crossing a gap that would close it
-    bottom: "40px",
-    left: "50%",
-    transform: "translateX(-50%)",
-    backgroundColor: "rgba(20,20,22,0.94)",
-    borderRadius: "10px",
-    padding: "12px 10px 8px",
-    zIndex: 30,
-    backdropFilter: "blur(12px)",
-    WebkitBackdropFilter: "blur(12px)",
-    boxShadow:
-      "inset 0 0 0 1px rgba(255,255,255,0.10)," +
-      "0 8px 24px -8px rgba(0,0,0,0.7)",
+    position: "relative",
+    width: "56px",
+    height: "20px",
     display: "flex",
-    flexDirection: "column",
     alignItems: "center",
-    gap: "6px",
-    minWidth: "40px",
-  };
-}
-
-export function getVolumeVerticalTrackStyle(): React.CSSProperties {
-  return {
-    width: "4px",
-    height: "80px",
-    backgroundColor: "rgba(255,255,255,0.22)",
-    borderRadius: "999px",
-    position: "relative",
     cursor: "pointer",
     touchAction: "none",
+    flexShrink: 0,
+    marginRight: "4px",
   };
 }
 
-export function getVolumeVerticalFillStyle(
-  volume: number,
-  accentColor: string
-): React.CSSProperties {
+export function getVolumeTrackStyle(): React.CSSProperties {
   return {
     position: "absolute",
     left: 0,
     right: 0,
+    height: "4px",
+    backgroundColor: "rgba(255,255,255,0.24)",
+    borderRadius: "999px",
+    overflow: "hidden",
+  };
+}
+
+/**
+ * White, not the accent: the accent means playback progress, and two accent
+ * bars in one row make neither of them mean anything.
+ */
+export function getVolumeFillStyle(level: number): React.CSSProperties {
+  return {
+    position: "absolute",
+    left: 0,
+    top: 0,
     bottom: 0,
-    height: `${volume * 100}%`,
-    backgroundColor: accentColor,
+    width: `${level * 100}%`,
+    backgroundColor: "rgba(255,255,255,0.85)",
     borderRadius: "999px",
   };
 }
 
-export function getVolumeVerticalThumbStyle(
-  volume: number,
-  accentColor: string
+export function getVolumeThumbStyle(
+  level: number,
+  isActive: boolean
 ): React.CSSProperties {
   return {
     position: "absolute",
-    left: "50%",
-    bottom: `${volume * 100}%`,
-    width: "12px",
-    height: "12px",
+    left: `${level * 100}%`,
+    top: "50%",
+    width: "11px",
+    height: "11px",
     borderRadius: "50%",
-    backgroundColor: accentColor,
-    transform: "translate(-50%, 50%)",
+    backgroundColor: "#fff",
+    transform: `translate(-50%, -50%) scale(${isActive ? 1.18 : 1})`,
+    transition: "transform 0.15s cubic-bezier(0.32, 0.72, 0, 1)",
     boxShadow: "0 1px 3px rgba(0,0,0,0.45)",
-    zIndex: 1,
     pointerEvents: "none",
-  };
-}
-
-export function getVolumeLabelStyle(): React.CSSProperties {
-  return {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: "11px",
-    fontVariantNumeric: "tabular-nums",
-    whiteSpace: "nowrap",
   };
 }
 
@@ -557,6 +586,13 @@ export function getVolumeLabelStyle(): React.CSSProperties {
 // Overlays
 // ---------------------------------------------------------------------------
 
+/**
+ * Near-opaque and stacked above the poster.
+ *
+ * At 70% black over a visible poster, the play button underneath showed
+ * straight through the alert glyph — so a failed video read as a play button
+ * wearing a red halo. An error state should replace the frame, not tint it.
+ */
 export function getErrorOverlayStyle(): React.CSSProperties {
   return {
     position: "absolute",
@@ -565,21 +601,59 @@ export function getErrorOverlayStyle(): React.CSSProperties {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: "12px",
+    gap: "14px",
     padding: "24px",
-    backgroundColor: "rgba(0,0,0,0.7)",
-    zIndex: 15,
+    backgroundColor: "rgba(9,9,11,0.94)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    zIndex: 25,
+  };
+}
+
+export function getErrorTitleStyle(): React.CSSProperties {
+  return {
+    color: "#fff",
+    fontSize: "15px",
+    fontWeight: 550,
+    textAlign: "center",
+    letterSpacing: "-0.01em",
   };
 }
 
 export function getErrorMessageStyle(): React.CSSProperties {
   return {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: "14px",
+    color: "rgba(255,255,255,0.62)",
+    fontSize: "13px",
+    lineHeight: 1.5,
     textAlign: "center",
-    maxWidth: "80%",
-    textWrap: "balance",
+    // 46ch keeps the explanation to two comfortable lines on a wide player
+    maxWidth: "46ch",
+    marginTop: "-6px",
   } as React.CSSProperties;
+}
+
+/** A dead end plus a back button ends the journey; a retry continues it. */
+export function getRetryButtonStyle(): React.CSSProperties {
+  return {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "7px",
+    marginTop: "4px",
+    height: "34px",
+    padding: "0 14px",
+    borderRadius: "9px",
+    border: "none",
+    cursor: "pointer",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.14)",
+    color: "#fff",
+    fontSize: "13px",
+    fontWeight: 500,
+    fontFamily: "inherit",
+    transition: "background-color 0.15s ease-out",
+    touchAction: "manipulation",
+  };
 }
 
 export function getLoadingOverlayStyle(): React.CSSProperties {
@@ -823,7 +897,7 @@ export function injectKeyframes(): void {
     /* --- Poster play button ------------------------------------------- */
     [data-vplayer-poster-button] {
       transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1),
-                  box-shadow 0.2s ease-out;
+                  background-color 0.2s ease-out;
     }
     [data-vplayer-poster-button]::after {
       content: "";
@@ -839,7 +913,8 @@ export function injectKeyframes(): void {
     }
     @media (hover: hover) and (pointer: fine) {
       [data-vplayer-poster-button]:hover {
-        transform: scale(1.06);
+        transform: scale(1.05);
+        background-color: rgba(28,28,34,0.52);
       }
       [data-vplayer-poster-button]:hover::after {
         opacity: 1;
@@ -851,8 +926,8 @@ export function injectKeyframes(): void {
     }
 
     /* --- Control buttons ---------------------------------------------- */
-    /* 40px visual box bled out to 44; the 2px per side exactly consumes the
-       4px group gap, so neighbouring targets touch but never overlap. */
+    /* 36×40 visual box bled out to 40×44; the 2px per side exactly consumes
+       the 4px group gap, so neighbouring targets touch but never overlap. */
     [data-vplayer-btn]::before {
       content: "";
       position: absolute;
@@ -865,8 +940,12 @@ export function injectKeyframes(): void {
       [data-vplayer-menu-item]:hover {
         background-color: rgba(255,255,255,0.09);
       }
+      [data-vplayer-retry]:hover {
+        background-color: rgba(255,255,255,0.16);
+      }
     }
-    [data-vplayer-btn]:active {
+    [data-vplayer-btn]:active,
+    [data-vplayer-retry]:active {
       transform: scale(0.96);
     }
 
@@ -892,7 +971,8 @@ export function injectKeyframes(): void {
       [data-vplayer-poster-button]:hover,
       [data-vplayer-poster-button]:active,
       [data-vplayer-poster-button]:hover::after,
-      [data-vplayer-btn]:active {
+      [data-vplayer-btn]:active,
+      [data-vplayer-retry]:active {
         transform: none;
       }
     }

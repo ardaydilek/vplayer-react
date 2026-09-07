@@ -28,7 +28,7 @@ import {
   VolumeMuteIcon,
   FullscreenIcon,
   ExitFullscreenIcon,
-  SettingsIcon,
+  RetryIcon,
   PipIcon,
   SpinnerIcon,
   CCIcon,
@@ -70,12 +70,14 @@ import {
   getCaptionRegionStyle,
   getCaptionCueStyle,
   getVolumeSliderContainerStyle,
-  getVolumePopupStyle,
-  getVolumeVerticalTrackStyle,
-  getVolumeVerticalFillStyle,
-  getVolumeVerticalThumbStyle,
-  getVolumeLabelStyle,
+  getVolumeSliderStyle,
+  getVolumeTrackStyle,
+  getVolumeFillStyle,
+  getVolumeThumbStyle,
+  getSpeedButtonStyle,
   getErrorOverlayStyle,
+  getErrorTitleStyle,
+  getRetryButtonStyle,
   getErrorMessageStyle,
   getLoadingOverlayStyle,
   getTitleOverlayStyle,
@@ -102,8 +104,22 @@ const HIDE_ON_LEAVE_DELAY = 800;
 const VOLUME_STORAGE_KEY = "vplayer-volume";
 /** Breathing room between the last line of captions and the top of the bar */
 const CAPTION_CONTROLS_GAP = 10;
-/** Below this the inline variants stack, because one row can no longer hold them */
-const INLINE_LAYOUT_MIN_WIDTH = 480;
+/**
+ * Layout thresholds, each set from the measured width its arrangement actually
+ * needs rather than a round number. Picked too low, a threshold engages a
+ * layout that then overflows its own bar.
+ */
+/** One row holding a usable scrubber plus every control needs ~530px */
+const INLINE_LAYOUT_MIN_WIDTH = 580;
+/** The stacked row fits the 56px volume slider from ~460px */
+const VOLUME_SLIDER_MIN_WIDTH = 480;
+/**
+ * Below this the row genuinely cannot hold everything at a 44px target. Rather
+ * than shrink every control under the floor, the time readout drops its
+ * duration half and Picture-in-Picture steps aside — on a player this narrow
+ * the viewer is on a phone, where the OS offers PiP itself.
+ */
+const COMPACT_CONTROLS_MAX_WIDTH = 400;
 
 function getShortcuts(seekStep: number, volumeStep: number): [string, string][] {
   return [
@@ -238,7 +254,9 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   const isPlayingRef = useRef(false);
   const hasStartedRef = useRef(false);
   const milestonesFiredRef = useRef<Set<number>>(new Set());
-  const playlistAdvancingRef = useRef(false);
+  // null = the source changed from outside; "auto" = the track ended; "manual"
+  // = the viewer pressed prev/next. The three want different resume behaviour.
+  const trackChangeRef = useRef<null | "auto" | "manual">(null);
   const initialTimeAppliedRef = useRef(false);
   const currentChapterRef = useRef<string | null>(null);
   const readyFiredRef = useRef(false);
@@ -249,6 +267,7 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   const mediaSettingsRef = useRef({ volume: 1, muted: false, rate: 1 });
   const prevPlayingRef = useRef<boolean | undefined>(undefined);
   const controlsBarRef = useRef<HTMLDivElement>(null);
+  const volumeBarRef = useRef<HTMLDivElement>(null);
   const instanceId = useId();
 
   // Latest onSeek for handlers registered in long-lived effects
@@ -322,8 +341,8 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   });
 
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
-  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [showCCMenu, setShowCCMenu] = useState(false);
+  const [isVolumeDragging, setIsVolumeDragging] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [hoverProgress, setHoverProgress] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -421,7 +440,6 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
         if (controlsBarRef.current?.contains(document.activeElement)) return;
         setState((s) => ({ ...s, showControls: false }));
         setShowSpeedMenu(false);
-        setShowVolumeSlider(false);
       }, hideControlsDelay);
     }
   }, [forceShowControls, hideControlsDelay]);
@@ -447,11 +465,18 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
 
   // Reset player state when activeSrc changes (including playlist advances)
   useEffect(() => {
+    const change = trackChangeRef.current;
+    trackChangeRef.current = null;
+    const wasPlaying = isPlayingRef.current;
+
     setState((s) => ({
       ...s,
       currentTime: 0,
       duration: 0,
-      hasStarted: false,
+      // Moving through a playlist must not drop the player back to its poster:
+      // the control bar renders on `hasStarted`, so resetting it mid-playlist
+      // tore the bar down and stranded the viewer on a play button.
+      hasStarted: change !== null,
       isPlaying: false,
       buffered: 0,
       isLoading: false,
@@ -468,14 +493,15 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     setActiveTrack(null);
     setEmbedStarted(false);
 
-    if (playlistAdvancingRef.current) {
-      playlistAdvancingRef.current = false;
+    // Auto-advance always keeps playing; a manual skip respects a player the
+    // viewer had deliberately paused.
+    if (change === "auto" || (change === "manual" && wasPlaying)) {
       const v = videoRef.current;
       if (v) {
         // The browser queues play() until the new source is loadable, so no
         // canplay listener is needed — and a load error can't strand the
         // spinner because the error event clears isLoading.
-        setState((s) => ({ ...s, hasStarted: true, isLoading: true }));
+        setState((s) => ({ ...s, isLoading: true }));
         v.play().catch(() =>
           setState((s) => ({ ...s, isPlaying: false, isLoading: false }))
         );
@@ -742,7 +768,7 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   // Menus autoFocus their active item; when a menu closes (unmounting the
   // focused element), pull focus back into the player so keyboard shortcuts
   // keep working instead of focus silently dropping to <body>.
-  const anyMenuOpen = showSpeedMenu || showCCMenu || showVolumeSlider;
+  const anyMenuOpen = showSpeedMenu || showCCMenu;
   const prevMenuOpenRef = useRef(false);
   useEffect(() => {
     const wasOpen = prevMenuOpenRef.current;
@@ -916,11 +942,11 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       onMilestone(100);
     }
     if (isPlaylist && currentIndex < srcList.length - 1) {
-      playlistAdvancingRef.current = true;
+      trackChangeRef.current = "auto";
       setCurrentIndex((i) => i + 1);
       onNext?.();
     } else if (isPlaylist && loopPlaylist) {
-      playlistAdvancingRef.current = true;
+      trackChangeRef.current = "auto";
       setCurrentIndex(0);
       onNext?.();
     } else {
@@ -1117,11 +1143,37 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
     }
   }, [state.volume, onVolumeChange]);
 
-  const handleVolumeSliderClick = useCallback(
-    (e: ReactMouseEvent<HTMLDivElement>) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      // Vertical slider: bottom = 0%, top = 100%
-      setVolumeLevel((rect.bottom - e.clientY) / rect.height);
+  // Pointer events cover mouse, pen and touch in one path; pointer capture
+  // keeps the drag alive once the finger leaves the 56px track, and a slider
+  // that only responded to clicks made precise levels hard to hit.
+  const handleVolumePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const bar = volumeBarRef.current;
+      if (!bar) return;
+      e.preventDefault();
+
+      const apply = (clientX: number) => {
+        const rect = bar.getBoundingClientRect();
+        if (rect.width === 0) return;
+        setVolumeLevel((clientX - rect.left) / rect.width);
+      };
+
+      apply(e.clientX);
+      setIsVolumeDragging(true);
+      bar.setPointerCapture?.(e.pointerId);
+
+      const onMove = (ev: PointerEvent) => apply(ev.clientX);
+      const onUp = (ev: PointerEvent) => {
+        setIsVolumeDragging(false);
+        bar.releasePointerCapture?.(ev.pointerId);
+        bar.removeEventListener("pointermove", onMove);
+        bar.removeEventListener("pointerup", onUp);
+        bar.removeEventListener("pointercancel", onUp);
+      };
+
+      bar.addEventListener("pointermove", onMove);
+      bar.addEventListener("pointerup", onUp);
+      bar.addEventListener("pointercancel", onUp);
     },
     [setVolumeLevel]
   );
@@ -1273,7 +1325,6 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
         setShowShortcuts(false);
         setShowSpeedMenu(false);
         setShowCCMenu(false);
-        setShowVolumeSlider(false);
       } else if (/^[0-9]$/.test(e.key)) {
         e.preventDefault();
         if (isFinite(v.duration)) {
@@ -1379,7 +1430,6 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       hideTimerRef.current = setTimeout(() => {
         setState((s) => ({ ...s, showControls: false }));
         setShowSpeedMenu(false);
-        setShowVolumeSlider(false);
       }, HIDE_ON_LEAVE_DELAY);
     }
     setHoverProgress(null);
@@ -1411,13 +1461,64 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
   const posterUrl = poster || DEFAULT_POSTER;
   const showPoster = !state.hasStarted;
   const hlsError = !!parsed.isHls && hlsUnsupported;
+  const hasError = !!state.error || hlsError || !hasSource;
+
+  /**
+   * `MEDIA_ERR_SRC_NOT_SUPPORTED` fires for a 404, a CORS refusal and a codec
+   * the browser can't decode alike, so the old "This video format is not
+   * supported" was wrong in the most common case. Name what the viewer can
+   * check instead of guessing at a cause.
+   */
+  const errorCopy: { title: string; detail: string; canRetry: boolean } | null =
+    !hasError
+      ? null
+      : !hasSource
+        ? {
+            title: "No video to play",
+            detail: "This player was rendered without a source.",
+            canRetry: false,
+          }
+        : hlsError
+          ? {
+              title: "This browser can’t play HLS",
+              detail:
+                "Live and adaptive streams need Safari, iOS, or a browser with native HLS support.",
+              canRetry: false,
+            }
+          : state.error?.code === 2
+            ? {
+                title: "The connection dropped",
+                detail: "Loading stopped partway through. Check your connection and try again.",
+                canRetry: true,
+              }
+            : state.error?.code === 3
+              ? {
+                  title: "This video couldn’t be decoded",
+                  detail: "The file may be damaged, or it uses a codec this browser doesn’t support.",
+                  canRetry: true,
+                }
+              : {
+                  title: "This video couldn’t be loaded",
+                  detail:
+                    "The file may be missing, blocked by the server, or in a format this browser can’t play.",
+                  canRetry: true,
+                };
+
+  const retryPlayback = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    setState((st) => ({ ...st, error: null, isLoading: true }));
+    v.load();
+    v.play().catch(() => setState((st) => ({ ...st, isPlaying: false, isLoading: false })));
+  }, []);
   const controlsVisible =
     forceShowControls ||
     state.showControls ||
     !state.isPlaying ||
     isDragging ||
     showSpeedMenu ||
-    showCCMenu;
+    showCCMenu ||
+    isVolumeDragging;
 
   // ---- Caption + layout derivations ----
   const layoutVariant: ControlsVariant =
@@ -1425,6 +1526,10 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       ? "classic"
       : controlsVariant;
   const inlineLayout = layoutVariant !== "classic";
+
+  const showVolumeSlider = metrics.width >= VOLUME_SLIDER_MIN_WIDTH;
+  const compactControls =
+    metrics.width > 0 && metrics.width < COMPACT_CONTROLS_MAX_WIDTH;
 
   const captionFontSize = getCaptionFontSize(metrics.box?.height ?? 0);
   const topCues = activeCues.filter((c) => c.region === "top");
@@ -1498,12 +1603,13 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           data-vplayer-btn=""
           style={buttonStyle}
           onClick={() => {
+            trackChangeRef.current = "manual";
             setCurrentIndex((i) => i - 1);
             onPrev?.();
           }}
           aria-label="Previous video"
         >
-          <PrevIcon size={18} color={iconColor} />
+          <PrevIcon size={20} color={iconColor} />
         </button>
       )}
       {currentIndex < srcList.length - 1 && (
@@ -1512,12 +1618,13 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           data-vplayer-btn=""
           style={buttonStyle}
           onClick={() => {
+            trackChangeRef.current = "manual";
             setCurrentIndex((i) => i + 1);
             onNext?.();
           }}
           aria-label="Next video"
         >
-          <NextIcon size={18} color={iconColor} />
+          <NextIcon size={20} color={iconColor} />
         </button>
       )}
     </>
@@ -1525,18 +1632,9 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
 
   // Click mutes (matching the accessible name); the slider popup opens on
   // hover or keyboard focus, so it is never the only way to reach volume.
+  const volumeLevel = state.isMuted ? 0 : state.volume;
   const volumeControl = (
-    <div
-      style={getVolumeSliderContainerStyle()}
-      onMouseEnter={() => setShowVolumeSlider(true)}
-      onMouseLeave={() => setShowVolumeSlider(false)}
-      onFocus={() => setShowVolumeSlider(true)}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          setShowVolumeSlider(false);
-        }
-      }}
-    >
+    <div style={getVolumeSliderContainerStyle()}>
       <button
         type="button"
         data-vplayer-btn=""
@@ -1546,35 +1644,26 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       >
         <VolumeIcon size={20} color={iconColor} />
       </button>
+      {/* Dropped below ~420px, where the row genuinely has no room for it —
+          the mute toggle stays, and hardware volume covers the rest. */}
       {showVolumeSlider && (
-        <div style={getVolumePopupStyle()}>
-          <div
-            style={getVolumeVerticalTrackStyle()}
-            onClick={handleVolumeSliderClick}
-            onKeyDown={handleVolumeKeyDown}
-            role="slider"
-            aria-label="Volume"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round((state.isMuted ? 0 : state.volume) * 100)}
-            tabIndex={0}
-          >
-            <div
-              style={getVolumeVerticalFillStyle(
-                state.isMuted ? 0 : state.volume,
-                accentColor
-              )}
-            />
-            <div
-              style={getVolumeVerticalThumbStyle(
-                state.isMuted ? 0 : state.volume,
-                accentColor
-              )}
-            />
+        <div
+          ref={volumeBarRef}
+          style={getVolumeSliderStyle()}
+          onPointerDown={handleVolumePointerDown}
+          onKeyDown={handleVolumeKeyDown}
+          role="slider"
+          aria-label="Volume"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(volumeLevel * 100)}
+          aria-valuetext={`${Math.round(volumeLevel * 100)}% volume`}
+          tabIndex={0}
+        >
+          <div style={getVolumeTrackStyle()}>
+            <div style={getVolumeFillStyle(volumeLevel)} />
           </div>
-          <span style={getVolumeLabelStyle()}>
-            {state.isMuted ? "0%" : `${Math.round(state.volume * 100)}%`}
-          </span>
+          <div style={getVolumeThumbStyle(volumeLevel, isVolumeDragging)} />
         </div>
       )}
     </div>
@@ -1654,7 +1743,7 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           aria-expanded={showCCMenu}
         >
           <CCIcon
-            size={18}
+            size={20}
             color={activeTrack !== null ? accentColor : iconColor}
           />
         </button>
@@ -1663,24 +1752,17 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
       <button
         type="button"
         data-vplayer-btn=""
-        style={{
-          ...buttonStyle,
-          fontSize: "12px",
-          fontWeight: 600,
-          fontVariantNumeric: "tabular-nums",
-        }}
+        style={getSpeedButtonStyle(layoutVariant, state.playbackRate === 1)}
         onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-        aria-label="Playback speed"
+        aria-label={`Playback speed: ${state.playbackRate}×`}
         aria-expanded={showSpeedMenu}
       >
-        {state.playbackRate === 1 ? (
-          <SettingsIcon size={18} color={iconColor} />
-        ) : (
-          <span style={{ color: accentColor }}>{state.playbackRate}×</span>
-        )}
+        <span style={state.playbackRate === 1 ? undefined : { color: accentColor }}>
+          {state.playbackRate}×
+        </span>
       </button>
 
-      {supportsPip && !disablePictureInPicture && (
+      {supportsPip && !disablePictureInPicture && !compactControls && (
         <button
           type="button"
           data-vplayer-btn=""
@@ -1688,7 +1770,7 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           onClick={togglePip}
           aria-label="Picture in picture"
         >
-          <PipIcon size={18} color={iconColor} />
+          <PipIcon size={20} color={iconColor} />
         </button>
       )}
 
@@ -1702,9 +1784,9 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
         }
       >
         {state.isFullscreen ? (
-          <ExitFullscreenIcon size={18} color={iconColor} />
+          <ExitFullscreenIcon size={20} color={iconColor} />
         ) : (
-          <FullscreenIcon size={18} color={iconColor} />
+          <FullscreenIcon size={20} color={iconColor} />
         )}
       </button>
     </div>
@@ -1845,8 +1927,11 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
             <button
               type="button"
               data-vplayer-poster-button=""
-              style={getPlayButtonLargeStyle(accentColor)}
-              tabIndex={showPoster ? 0 : -1}
+              style={getPlayButtonLargeStyle()}
+              tabIndex={showPoster && !hasError ? 0 : -1}
+              // A failed video has nothing to play; leaving the button up
+              // showed it glowing through the translucent error overlay.
+              hidden={hasError}
               aria-label="Play video"
             >
               {/* A triangle's visual centre sits a third of the way from its
@@ -1856,9 +1941,9 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                 size={30}
                 color={iconColor}
                 style={{
-                  width: "42%",
-                  height: "42%",
-                  transform: "translateX(4%)",
+                  width: "40%",
+                  height: "40%",
+                  transform: "translateX(3%)",
                 }}
               />
             </button>
@@ -1867,23 +1952,27 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           {/* ---- Loading Spinner ---- */}
           {state.isLoading && state.hasStarted && !state.error && (
             <div style={getLoadingOverlayStyle()}>
-              <SpinnerIcon size={40} color={iconColor} />
+              <SpinnerIcon size={36} color={iconColor} />
             </div>
           )}
 
           {/* ---- Error State ---- */}
-          {(state.error || hlsError || !hasSource) && (
-            <div style={getErrorOverlayStyle()}>
-              <ErrorIcon size={40} color={iconColor} />
-              <span style={getErrorMessageStyle()}>
-                {!hasSource
-                  ? "No video source provided"
-                  : hlsError
-                    ? "HLS playback is not supported in this browser"
-                    : state.error?.code === 4
-                      ? "This video format is not supported"
-                      : "Video could not be loaded"}
-              </span>
+          {errorCopy && (
+            <div style={getErrorOverlayStyle()} role="alert">
+              <ErrorIcon size={30} color="rgba(255,255,255,0.55)" />
+              <span style={getErrorTitleStyle()}>{errorCopy.title}</span>
+              <span style={getErrorMessageStyle()}>{errorCopy.detail}</span>
+              {errorCopy.canRetry && (
+                <button
+                  type="button"
+                  data-vplayer-retry=""
+                  style={getRetryButtonStyle()}
+                  onClick={retryPlayback}
+                >
+                  <RetryIcon size={15} color="currentColor" />
+                  Try again
+                </button>
+              )}
             </div>
           )}
 
@@ -2008,16 +2097,25 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
           {isNative && state.hasStarted && (
             <div
               ref={controlsBarRef}
-              style={getControlsBarStyle(controlsVisible, layoutVariant)}
+              style={getControlsBarStyle(
+                controlsVisible,
+                layoutVariant,
+                compactControls
+              )}
               onFocus={resetHideTimer}
             >
               <div style={getControlsShellStyle(layoutVariant)}>
                 {inlineLayout ? (
                   // One row: the scrubber stretches between the two readouts.
                   <div style={getInlineRowStyle()}>
-                    {playButton}
-                    {playlistButtons}
-                    {volumeControl}
+                    {/* Transport reads as one cluster at the same 4px pitch as
+                        the right-hand group; the row's 8px gap separates
+                        clusters, not individual buttons. */}
+                    <div style={getControlGroupStyle()}>
+                      {playButton}
+                      {playlistButtons}
+                      {volumeControl}
+                    </div>
                     <span style={timeStyle}>{formatTime(state.currentTime)}</span>
                     {progressBar}
                     <span style={timeStyle}>
@@ -2038,8 +2136,12 @@ const VPlayerBase = forwardRef<VPlayerHandle, VPlayerProps>(function VPlayer(
                         {volumeControl}
                         <span style={timeStyle}>
                           {formatTime(state.currentTime)}
-                          {" / "}
-                          {formatTime(state.duration)}
+                          {!compactControls && (
+                            <>
+                              {" / "}
+                              {formatTime(state.duration)}
+                            </>
+                          )}
                         </span>
                       </div>
                       {rightGroup}

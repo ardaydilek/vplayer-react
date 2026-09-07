@@ -4,6 +4,10 @@
 
 ### Bug fixes
 
+- **Skipping through a playlist no longer drops back to the poster.** Changing the source reset `hasStarted`, which tore down the control bar the prev/next buttons live in — so pressing Next stranded the viewer on a play button mid-playlist, and Previous never appeared on the track after. Manual skips now keep the bar up and continue playback if the player was playing; an external `src` change still resets, as it should.
+- **The error overlay no longer shows the play button through itself.** At 70% black over a visible poster, the play button underneath showed straight through the alert glyph, so a failed video read as a play button wearing a red halo. The overlay is now near-opaque and the poster button is hidden behind it.
+- **A failed load is no longer blamed on the format.** `MEDIA_ERR_SRC_NOT_SUPPORTED` fires for a 404, a CORS refusal and an undecodable codec alike, so "This video format is not supported" was wrong in the most common case. Each error code now gets copy naming something the viewer can actually check.
+- **The control bar could overflow its own width.** Below roughly 470px the row was wider than the player, because the layout thresholds were round numbers rather than the widths the arrangements need.
 - **Captions no longer sit behind the control bar.** The player now keeps its `<track>` elements in `hidden` mode and draws the active cues itself. The browser's own cue box is anchored to the video *element*, so it rendered underneath the controls; the player's cue layer rises to clear the bar while it is on screen and drops back down when it fades.
 - **Captions stay inside the picture when the frame is letterboxed.** Fullscreening a 16:9 clip on a portrait phone letterboxes the picture into a band in the middle of the screen — native cues landed in the black bar far below it. Cues are now positioned against the video's real content box, so they sit at the bottom of the picture wherever that falls.
 - Cue placement now honours `align` and top-anchored `line` values from the VTT, sizes cues relative to the picture as WebVTT specifies, and preserves cue markup (`<b>`, `<i>`, `<u>`, `<ruby>`) through `getCueAsHTML()`.
@@ -18,12 +22,17 @@
   - `minimal` — one row, scrubber inline between elapsed and remaining time, almost no scrim
   - `floating` — the same row inside a detached, blurred pill inset from the frame
 
-  `minimal` and `floating` fall back to the stacked arrangement below ~480px, where a single row can no longer hold the scrubber and every control at once. No control is ever dropped.
+  Each skin adapts down to a ~300px player: below ~580px the inline ones fall back to the stacked arrangement, below ~480px the volume slider drops to its mute toggle, and below ~400px the time readout shows elapsed only while Picture-in-Picture steps aside. Every remaining control keeps a 40×44px hit area at every size.
 - `ControlsVariant` and `CaptionStyle` are now exported types.
+- **Retry on a failed load** — the error overlay now offers "Try again", which reloads the media element instead of leaving the viewer at a dead end.
 
 ### Design
 
-- **Poster play button reworked.** The coloured glow is gone in favour of a stacked neutral shadow with an inner highlight; the button is now sized as a share of the frame (bounded 54–88px) so it neither swamps a small embed nor disappears in a full-bleed hero; the play triangle is optically nudged toward its point; hover grows a translucent ring; press gives `scale(0.96)`.
+- **The icon set was redrawn on one grid.** Every glyph now sits in a 24×24 viewBox optically centred on (12, 12) with a single 1.8 stroke weight, and every control renders at 20px. The old set mixed 1.5/2/3 weights and 18/20px sizes in the same row, drew Picture-in-Picture two units above centre and the speaker one and a half units left of it — so a row of buttons whose boxes were perfectly aligned still read as ragged. Captions went back to two open "C"s (bars in a rounded rectangle read as a message bubble), and the PiP window is now inset far enough to read as a window rather than a filled screen.
+- **The speed control shows the rate instead of a gear.** A cog says "settings"; this menu only ever changes the rate. `1×` says what the control does and takes the busiest glyph out of the row.
+- **Volume is an inline slider that is always there.** The vertical popup opened on hover, which put the only pointer route to volume behind a capability touch devices don't have, and made a fiddly vertical drag out of a flat control. It now drags with pointer capture, so the gesture survives leaving the track.
+- **The control row is tighter.** Buttons went from 40×40 to 36×40 around a consistent 20px glyph, dropping the pitch from 44px to 40px while the `::before` bleed keeps a 40×44 target that still never overlaps a neighbour.
+- **Poster play button reworked.** It is now dark glass — a translucent, blurred disc with a hairline ring — rather than a saturated accent circle stamped over the artwork, so it borrows the poster underneath instead of competing with it, and the accent colour keeps one job: playback progress. Sized as a share of the frame (bounded 56–84px) so it neither swamps a small embed nor disappears in a full-bleed hero; the play triangle is optically nudged toward its point; hover grows a translucent ring; press gives `scale(0.96)`.
 - **Poster scrim eased.** The flat radial wash that dimmed the whole poster is now an eased vignette with intermediate stops — no banding, and the artwork stays bright through the mid-ring.
 - Control buttons are 40×40 with a 44px hit area, sized so neighbouring targets meet without overlapping.
 - Hover, press and focus states moved from inline JS handlers into the injected stylesheet, so they are gated behind `(hover: hover) and (pointer: fine)` — no more stuck hover states after a tap on touch devices.

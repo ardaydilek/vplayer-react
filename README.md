@@ -11,7 +11,7 @@ A lightweight, dependency-free, production-ready video player for React. Support
 - **Controlled playback** — Declarative `playing`, `volume`, `muted`, and `playbackRate` props
 - **Deep customization** — `seekStep`, `volumeStep`, `playbackRates`, `hideControlsDelay`, `showControls` (kiosk mode)
 - **Clip mode** — `endTime` prop stops playback at a custom timestamp
-- **Three control skins** — `controlsVariant`: `classic`, `minimal`, or `floating`
+- **Three control skins** — `controlsVariant`: `classic`, `minimal`, or `floating`, each adapting down to a 300px player
 - **Captions that clear the controls** — cues are drawn inside the picture, above the bar, and stay put when the frame is letterboxed
 - **Caption styling** — Style subtitle cues via the `captionStyle` prop
 - **Playlist support** — Pass a URL array for prev/next controls and auto-advance
@@ -380,9 +380,18 @@ controls — the difference is layout and surface, not capability.
 | `minimal` | One row; scrubber inline between elapsed and remaining time; almost no scrim | The video is the page — a hero, a product demo, an editorial embed |
 | `floating` | The same single row inside a detached, blurred pill inset from the frame | The player sits inside a product UI and should read as part of it |
 
-`minimal` and `floating` fall back to the stacked arrangement below roughly
-480px, where a single row can no longer hold the scrubber and every control at
-once. No control is ever dropped — only its arrangement changes.
+### How the bar adapts
+
+Each threshold is the measured width its arrangement actually needs, so the bar
+never overflows itself:
+
+| Player width | What changes |
+|--------------|--------------|
+| below ~580px | `minimal` and `floating` fall back to the stacked arrangement |
+| below ~480px | the volume slider drops; the mute toggle stays |
+| below ~400px | the time readout shows elapsed only, and Picture-in-Picture steps aside — at that size the viewer is on a phone, where the OS offers PiP itself |
+
+Every remaining control keeps a 40×44px hit area at every size.
 
 ### Player Behavior Customization
 

@@ -68,13 +68,39 @@ describe("VPlayer rendering", () => {
   it("shows an error message when src is an empty array", () => {
     const { container, getByText } = render(<VPlayer src={[]} />);
     expect(container.querySelector("video")).toBeNull();
-    expect(getByText("No video source provided")).toBeTruthy();
+    expect(getByText("No video to play")).toBeTruthy();
+    // Nothing to retry when there was never a source
+    expect(container.querySelector("[data-vplayer-retry]")).toBeNull();
   });
 
   it("shows an HLS error when the browser cannot play .m3u8", () => {
     // jsdom's canPlayType always returns "" — behaves like an unsupporting browser
     const { getByText } = render(<VPlayer src="/stream.m3u8" />);
-    expect(getByText("HLS playback is not supported in this browser")).toBeTruthy();
+    expect(getByText("This browser can’t play HLS")).toBeTruthy();
+  });
+
+  it("hides the poster play button behind an error", () => {
+    const { container } = render(<VPlayer src={[]} />);
+    const play = container.querySelector(
+      "[data-vplayer-poster-button]"
+    ) as HTMLElement;
+    // It used to glow through the translucent error overlay
+    expect(play.hidden).toBe(true);
+    expect(play.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("names a load failure without blaming the format, and offers a retry", () => {
+    const { container, getByText } = render(<VPlayer src="/clip.mp4" />);
+    const video = getVideo(container);
+    Object.defineProperty(video, "error", {
+      configurable: true,
+      value: { code: 4 },
+    });
+    act(() => {
+      fireEvent(video, new Event("error"));
+    });
+    expect(getByText("This video couldn’t be loaded")).toBeTruthy();
+    expect(container.querySelector("[data-vplayer-retry]")).not.toBeNull();
   });
 
   it("passes crossOrigin through to the video element", () => {
@@ -576,7 +602,7 @@ describe("VPlayer control variants", () => {
         "Mute",
         "Seek",
         "Captions",
-        "Playback speed",
+        "Playback speed: 1×",
         "Enter fullscreen",
       ]) {
         expect(
@@ -586,6 +612,42 @@ describe("VPlayer control variants", () => {
       }
     });
   }
+
+  it("keeps the control bar up when skipping through a playlist", () => {
+    const { container } = render(<VPlayer src={["/a.mp4", "/b.mp4"]} />);
+    const video = getVideo(container);
+    act(() => {
+      fireEvent(video, new Event("play"));
+    });
+    const next = container.querySelector(
+      '[aria-label="Next video"]'
+    ) as HTMLElement;
+    expect(next).not.toBeNull();
+
+    act(() => {
+      next.click();
+    });
+
+    // The source reset used to clear hasStarted, which tore the bar down and
+    // dropped the viewer back onto the poster mid-playlist.
+    expect(container.querySelector('[aria-label="Seek"]')).not.toBeNull();
+    expect(
+      container.querySelector('[aria-label="Previous video"]')
+    ).not.toBeNull();
+    expect(getVideo(container).getAttribute("src")).toBe("/b.mp4");
+  });
+
+  it("returns to the poster when the src prop changes from outside", () => {
+    const { container, rerender } = render(<VPlayer src="/a.mp4" />);
+    act(() => {
+      fireEvent(getVideo(container), new Event("play"));
+    });
+    expect(container.querySelector('[aria-label="Seek"]')).not.toBeNull();
+
+    rerender(<VPlayer src="/c.mp4" />);
+    // Not a playlist move — this one should reset
+    expect(container.querySelector('[aria-label="Seek"]')).toBeNull();
+  });
 
   it("defaults to the classic stacked layout", () => {
     const { container } = render(<VPlayer src="/clip.mp4" />);

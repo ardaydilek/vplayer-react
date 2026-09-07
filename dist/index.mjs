@@ -101,7 +101,12 @@ function parseAspectRatio(ratio) {
 
 // src/icons.tsx
 import { jsx, jsxs } from "react/jsx-runtime";
-function PlayIcon({ size = 24, color = "#fff", style }) {
+var STROKE = 1.8;
+function Svg({
+  size = 20,
+  style,
+  children
+}) {
   return /* @__PURE__ */ jsx(
     "svg",
     {
@@ -112,290 +117,163 @@ function PlayIcon({ size = 24, color = "#fff", style }) {
       xmlns: "http://www.w3.org/2000/svg",
       style,
       "aria-hidden": "true",
-      children: /* @__PURE__ */ jsx(
-        "path",
-        {
-          d: "M6.5 4.226a.75.75 0 0 1 1.146-.638l11.2 7.274a.75.75 0 0 1 0 1.276l-11.2 7.274A.75.75 0 0 1 6.5 18.774V4.226Z",
-          fill: color
-        }
-      )
+      focusable: "false",
+      children
     }
   );
 }
-function PauseIcon({ size = 24, color = "#fff", style }) {
-  return /* @__PURE__ */ jsxs(
-    "svg",
+function strokeProps(color) {
+  return {
+    stroke: color,
+    strokeWidth: STROKE,
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  };
+}
+function PlayIcon({ size = 20, color = "#fff", style }) {
+  return /* @__PURE__ */ jsx(Svg, { size, style, children: /* @__PURE__ */ jsx(
+    "path",
     {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg",
-      style,
-      "aria-hidden": "true",
-      children: [
-        /* @__PURE__ */ jsx("rect", { x: "6", y: "4", width: "4", height: "16", rx: "1", fill: color }),
-        /* @__PURE__ */ jsx("rect", { x: "14", y: "4", width: "4", height: "16", rx: "1", fill: color })
-      ]
+      d: "M9.1 6.5 17.3 12 9.1 17.5Z",
+      fill: color,
+      stroke: color,
+      strokeWidth: "2.6",
+      strokeLinejoin: "round"
     }
-  );
+  ) });
 }
-function VolumeHighIcon({ size = 20, color = "#fff", style }) {
-  return /* @__PURE__ */ jsxs(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg",
-      style,
-      "aria-hidden": "true",
-      children: [
-        /* @__PURE__ */ jsx(
-          "path",
-          {
-            d: "M11 5L6 9H2v6h4l5 4V5Z",
-            fill: color
-          }
-        ),
-        /* @__PURE__ */ jsx(
-          "path",
-          {
-            d: "M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14",
-            stroke: color,
-            strokeWidth: "2",
-            strokeLinecap: "round",
-            strokeLinejoin: "round"
-          }
-        )
-      ]
-    }
-  );
-}
-function VolumeLowIcon({ size = 20, color = "#fff", style }) {
-  return /* @__PURE__ */ jsxs(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg",
-      style,
-      "aria-hidden": "true",
-      children: [
-        /* @__PURE__ */ jsx(
-          "path",
-          {
-            d: "M11 5L6 9H2v6h4l5 4V5Z",
-            fill: color
-          }
-        ),
-        /* @__PURE__ */ jsx(
-          "path",
-          {
-            d: "M15.54 8.46a5 5 0 0 1 0 7.07",
-            stroke: color,
-            strokeWidth: "2",
-            strokeLinecap: "round",
-            strokeLinejoin: "round"
-          }
-        )
-      ]
-    }
-  );
-}
-function VolumeMuteIcon({ size = 20, color = "#fff", style }) {
-  return /* @__PURE__ */ jsxs(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg",
-      style,
-      "aria-hidden": "true",
-      children: [
-        /* @__PURE__ */ jsx(
-          "path",
-          {
-            d: "M11 5L6 9H2v6h4l5 4V5Z",
-            fill: color
-          }
-        ),
-        /* @__PURE__ */ jsx(
-          "path",
-          {
-            d: "M23 9l-6 6M17 9l6 6",
-            stroke: color,
-            strokeWidth: "2",
-            strokeLinecap: "round",
-            strokeLinejoin: "round"
-          }
-        )
-      ]
-    }
-  );
-}
-function FullscreenIcon({ size = 20, color = "#fff", style }) {
-  return /* @__PURE__ */ jsx(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg",
-      style,
-      "aria-hidden": "true",
-      children: /* @__PURE__ */ jsx(
-        "path",
-        {
-          d: "M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3",
-          stroke: color,
-          strokeWidth: "2",
-          strokeLinecap: "round",
-          strokeLinejoin: "round"
-        }
-      )
-    }
-  );
-}
-function ExitFullscreenIcon({ size = 20, color = "#fff", style }) {
-  return /* @__PURE__ */ jsx(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg",
-      style,
-      "aria-hidden": "true",
-      children: /* @__PURE__ */ jsx(
-        "path",
-        {
-          d: "M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3",
-          stroke: color,
-          strokeWidth: "2",
-          strokeLinecap: "round",
-          strokeLinejoin: "round"
-        }
-      )
-    }
-  );
-}
-function SettingsIcon({ size = 20, color = "#fff", style }) {
-  return /* @__PURE__ */ jsxs(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg",
-      style,
-      "aria-hidden": "true",
-      children: [
-        /* @__PURE__ */ jsx("circle", { cx: "12", cy: "12", r: "3", stroke: color, strokeWidth: "2" }),
-        /* @__PURE__ */ jsx(
-          "path",
-          {
-            d: "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z",
-            stroke: color,
-            strokeWidth: "2",
-            strokeLinecap: "round",
-            strokeLinejoin: "round"
-          }
-        )
-      ]
-    }
-  );
-}
-function PipIcon({ size = 20, color = "#fff", style }) {
-  return /* @__PURE__ */ jsxs(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg",
-      style,
-      "aria-hidden": "true",
-      children: [
-        /* @__PURE__ */ jsx("rect", { x: "2", y: "3", width: "20", height: "14", rx: "2", stroke: color, strokeWidth: "2" }),
-        /* @__PURE__ */ jsx("rect", { x: "11", y: "9", width: "9", height: "6", rx: "1", fill: color })
-      ]
-    }
-  );
-}
-function SpinnerIcon({ size = 40, color = "#fff", style }) {
-  return /* @__PURE__ */ jsx(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg",
-      style: { animation: "vplayer-spin 1s linear infinite", ...style },
-      "aria-hidden": "true",
-      children: /* @__PURE__ */ jsx(
-        "circle",
-        {
-          cx: "12",
-          cy: "12",
-          r: "10",
-          stroke: color,
-          strokeWidth: "3",
-          strokeDasharray: "31.4 31.4",
-          strokeLinecap: "round",
-          opacity: "0.7"
-        }
-      )
-    }
-  );
-}
-function CCIcon({ size = 20, color = "#fff", style }) {
-  return /* @__PURE__ */ jsxs("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true", style, children: [
-    /* @__PURE__ */ jsx("rect", { x: "2", y: "5", width: "20", height: "14", rx: "2", stroke: color, strokeWidth: "1.5" }),
-    /* @__PURE__ */ jsx("path", { d: "M7 12.5c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2", stroke: color, strokeWidth: "1.5", strokeLinecap: "round" }),
-    /* @__PURE__ */ jsx("path", { d: "M13 12.5c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2", stroke: color, strokeWidth: "1.5", strokeLinecap: "round" })
+function PauseIcon({ size = 20, color = "#fff", style }) {
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx("rect", { x: "7.6", y: "5", width: "3.2", height: "14", rx: "1.3", fill: color }),
+    /* @__PURE__ */ jsx("rect", { x: "13.2", y: "5", width: "3.2", height: "14", rx: "1.3", fill: color })
   ] });
 }
-function ErrorIcon({ size = 40, color = "#fff", style }) {
-  return /* @__PURE__ */ jsxs(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg",
-      style,
-      "aria-hidden": "true",
-      children: [
-        /* @__PURE__ */ jsx("circle", { cx: "12", cy: "12", r: "10", stroke: "#ef4444", strokeWidth: "2" }),
-        /* @__PURE__ */ jsx("path", { d: "M12 8v4", stroke: "#ef4444", strokeWidth: "2", strokeLinecap: "round" }),
-        /* @__PURE__ */ jsx("circle", { cx: "12", cy: "16", r: "1", fill: "#ef4444" })
-      ]
-    }
-  );
-}
 function PrevIcon({ size = 20, color = "#fff", style }) {
-  return /* @__PURE__ */ jsxs("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true", style, children: [
-    /* @__PURE__ */ jsx("path", { d: "M19 5L9 12l10 7V5Z", fill: color }),
-    /* @__PURE__ */ jsx("rect", { x: "5", y: "5", width: "2", height: "14", rx: "1", fill: color })
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx(
+      "path",
+      {
+        d: "M17.8 7 10.4 12l7.4 5Z",
+        fill: color,
+        stroke: color,
+        strokeWidth: "2.4",
+        strokeLinejoin: "round"
+      }
+    ),
+    /* @__PURE__ */ jsx("rect", { x: "5.2", y: "5.8", width: "2.4", height: "12.4", rx: "1.2", fill: color })
   ] });
 }
 function NextIcon({ size = 20, color = "#fff", style }) {
-  return /* @__PURE__ */ jsxs("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true", style, children: [
-    /* @__PURE__ */ jsx("path", { d: "M5 5l10 7-10 7V5Z", fill: color }),
-    /* @__PURE__ */ jsx("rect", { x: "17", y: "5", width: "2", height: "14", rx: "1", fill: color })
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx(
+      "path",
+      {
+        d: "M6.2 7 13.6 12l-7.4 5Z",
+        fill: color,
+        stroke: color,
+        strokeWidth: "2.4",
+        strokeLinejoin: "round"
+      }
+    ),
+    /* @__PURE__ */ jsx("rect", { x: "16.4", y: "5.8", width: "2.4", height: "12.4", rx: "1.2", fill: color })
   ] });
+}
+var SPEAKER = "M12.1 6.2a.85.85 0 0 0-1.4-.65L7.6 8.4H4.9a1.4 1.4 0 0 0-1.4 1.4v4.4a1.4 1.4 0 0 0 1.4 1.4h2.7l3.1 2.85a.85.85 0 0 0 1.4-.65V6.2Z";
+function VolumeHighIcon({ size = 20, color = "#fff", style }) {
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx("path", { d: SPEAKER, fill: color }),
+    /* @__PURE__ */ jsx("path", { d: "M15.3 9.2a4 4 0 0 1 0 5.6", ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("path", { d: "M18 6.5a7.8 7.8 0 0 1 0 11", ...strokeProps(color) })
+  ] });
+}
+function VolumeLowIcon({ size = 20, color = "#fff", style }) {
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx("path", { d: SPEAKER, fill: color }),
+    /* @__PURE__ */ jsx("path", { d: "M15.3 9.2a4 4 0 0 1 0 5.6", ...strokeProps(color) })
+  ] });
+}
+function VolumeMuteIcon({ size = 20, color = "#fff", style }) {
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx("path", { d: SPEAKER, fill: color }),
+    /* @__PURE__ */ jsx("path", { d: "m15.8 9.6 4.7 4.8m0-4.8-4.7 4.8", ...strokeProps(color) })
+  ] });
+}
+var SCREEN = { x: 3, y: 5.6, width: 18, height: 12.8, rx: 3.2 };
+function CCIcon({ size = 20, color = "#fff", style }) {
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx("rect", { ...SCREEN, ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("path", { d: "M10.8 10.5a2.3 2.3 0 1 0 0 3", ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("path", { d: "M17.2 10.5a2.3 2.3 0 1 0 0 3", ...strokeProps(color) })
+  ] });
+}
+function PipIcon({ size = 20, color = "#fff", style }) {
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx("rect", { ...SCREEN, ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("rect", { x: "12.6", y: "11.2", width: "6", height: "4.8", rx: "1.3", fill: color })
+  ] });
+}
+function FullscreenIcon({ size = 20, color = "#fff", style }) {
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx("path", { d: "M9 4H6.5A2.5 2.5 0 0 0 4 6.5V9", ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("path", { d: "M15 4h2.5A2.5 2.5 0 0 1 20 6.5V9", ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("path", { d: "M20 15v2.5a2.5 2.5 0 0 1-2.5 2.5H15", ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("path", { d: "M4 15v2.5A2.5 2.5 0 0 0 6.5 20H9", ...strokeProps(color) })
+  ] });
+}
+function ExitFullscreenIcon({
+  size = 20,
+  color = "#fff",
+  style
+}) {
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx("path", { d: "M4 9h2.5A2.5 2.5 0 0 0 9 6.5V4", ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("path", { d: "M20 9h-2.5A2.5 2.5 0 0 1 15 6.5V4", ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("path", { d: "M15 20v-2.5a2.5 2.5 0 0 1 2.5-2.5H20", ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("path", { d: "M9 20v-2.5A2.5 2.5 0 0 0 6.5 15H4", ...strokeProps(color) })
+  ] });
+}
+function ErrorIcon({ size = 32, color = "#fff", style }) {
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx("circle", { cx: "12", cy: "12", r: "8.2", ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("path", { d: "M12 8.1v4.6", ...strokeProps(color) }),
+    /* @__PURE__ */ jsx("circle", { cx: "12", cy: "16.1", r: "1.05", fill: color })
+  ] });
+}
+function RetryIcon({ size = 16, color = "#fff", style }) {
+  return /* @__PURE__ */ jsxs(Svg, { size, style, children: [
+    /* @__PURE__ */ jsx(
+      "path",
+      {
+        d: "M19.9 12a7.9 7.9 0 1 1-2.3-5.6",
+        ...strokeProps(color)
+      }
+    ),
+    /* @__PURE__ */ jsx("path", { d: "M19.9 4.6v4.6h-4.6", ...strokeProps(color) })
+  ] });
+}
+function SpinnerIcon({ size = 36, color = "#fff", style }) {
+  return /* @__PURE__ */ jsxs(
+    Svg,
+    {
+      size,
+      style: { animation: "vplayer-spin 0.9s linear infinite", ...style },
+      children: [
+        /* @__PURE__ */ jsx("circle", { cx: "12", cy: "12", r: "8.5", stroke: color, strokeWidth: "2.2", opacity: "0.22" }),
+        /* @__PURE__ */ jsx(
+          "circle",
+          {
+            cx: "12",
+            cy: "12",
+            r: "8.5",
+            stroke: color,
+            strokeWidth: "2.2",
+            strokeLinecap: "round",
+            strokeDasharray: "16 37.4"
+          }
+        )
+      ]
+    }
+  );
 }
 
 // src/captions.ts
@@ -561,25 +439,29 @@ function getPosterGradientStyle() {
     pointerEvents: "none"
   };
 }
-function getPlayButtonLargeStyle(accentColor) {
+function getPlayButtonLargeStyle() {
   return {
     position: "relative",
     zIndex: 1,
     // Sized as a share of the frame rather than a fixed 72px, so it neither
     // swamps a 320px embed nor disappears in a full-bleed hero — bounded at
     // both ends so it stays a real hit target and never becomes a billboard.
-    width: "7.5%",
-    minWidth: "54px",
-    maxWidth: "88px",
+    width: "7%",
+    minWidth: "56px",
+    maxWidth: "84px",
     aspectRatio: "1",
     borderRadius: "50%",
-    backgroundColor: accentColor,
+    // Dark glass, not light: a white triangle needs something behind it on a
+    // bright poster, and the ring keeps the disc visible on a dark one.
+    backgroundColor: "rgba(16,16,20,0.40)",
+    backdropFilter: "blur(16px) saturate(1.4)",
+    WebkitBackdropFilter: "blur(16px) saturate(1.4)",
     border: "none",
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.22),inset 0 0 0 1px rgba(255,255,255,0.10),0 2px 4px rgba(0,0,0,0.22),0 14px 34px -10px rgba(0,0,0,0.55)",
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.34),inset 0 1px 0 rgba(255,255,255,0.22),0 2px 6px rgba(0,0,0,0.3),0 16px 40px -12px rgba(0,0,0,0.7)",
     padding: 0,
     touchAction: "manipulation"
   };
@@ -630,7 +512,7 @@ function getCaptionCueStyle(align, captionStyle) {
     whiteSpace: "pre-line"
   };
 }
-function getControlsBarStyle(visible, variant) {
+function getControlsBarStyle(visible, variant, compact = false) {
   const scrim = {
     classic: "linear-gradient(to top,rgba(0,0,0,0.86) 0%,rgba(0,0,0,0.80) 12%,rgba(0,0,0,0.68) 26%,rgba(0,0,0,0.52) 41%,rgba(0,0,0,0.35) 56%,rgba(0,0,0,0.20) 70%,rgba(0,0,0,0.09) 83%,rgba(0,0,0,0) 100%)",
     minimal: "linear-gradient(to top,rgba(0,0,0,0.58) 0%,rgba(0,0,0,0.46) 22%,rgba(0,0,0,0.30) 46%,rgba(0,0,0,0.15) 70%,rgba(0,0,0,0.05) 87%,rgba(0,0,0,0) 100%)",
@@ -641,7 +523,8 @@ function getControlsBarStyle(visible, variant) {
     minimal: ["34px", "14px"],
     floating: ["40px", "12px"]
   };
-  const [padTop, padSide] = padding[variant];
+  const [padTop, padSideDefault] = padding[variant];
+  const padSide = compact ? "8px" : padSideDefault;
   return {
     position: "absolute",
     bottom: 0,
@@ -775,12 +658,12 @@ function getControlButtonStyle(variant = "classic") {
     border: "none",
     cursor: "pointer",
     padding: 0,
-    minWidth: "40px",
+    minWidth: "36px",
     height: "40px",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: variant === "floating" ? "8px" : "10px",
+    borderRadius: variant === "floating" ? "8px" : "9px",
     transition: "background-color 0.15s ease-out",
     color: "#fff",
     lineHeight: 1,
@@ -788,12 +671,29 @@ function getControlButtonStyle(variant = "classic") {
     touchAction: "manipulation"
   };
 }
+function getSpeedButtonStyle(variant, isDefaultRate) {
+  return {
+    ...getControlButtonStyle(variant),
+    // Wide enough for "0.25×" so the row can't shift as the rate changes
+    minWidth: "46px",
+    padding: "0 6px",
+    fontSize: "12.5px",
+    // Weight and figure width are constant across states: neither selecting a
+    // rate nor ticking past 9 may reflow the bar.
+    fontWeight: 600,
+    fontVariantNumeric: "tabular-nums",
+    letterSpacing: "0.01em",
+    color: isDefaultRate ? "rgba(255,255,255,0.9)" : "#fff"
+  };
+}
 function getPlayToggleStyle(variant) {
   const base = getControlButtonStyle(variant);
   if (variant === "classic") return base;
   return {
     ...base,
-    width: "40px",
+    width: "36px",
+    minWidth: "36px",
+    height: "36px",
     borderRadius: "50%",
     backgroundColor: "rgba(255,255,255,0.16)",
     boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.12)"
@@ -814,74 +714,58 @@ function getVolumeSliderContainerStyle() {
   return {
     display: "flex",
     alignItems: "center",
+    gap: "2px",
     position: "relative"
   };
 }
-function getVolumePopupStyle() {
+function getVolumeSliderStyle() {
   return {
-    position: "absolute",
-    // Touches the top of the volume button so the pointer can travel from
-    // button to popup without crossing a gap that would close it
-    bottom: "40px",
-    left: "50%",
-    transform: "translateX(-50%)",
-    backgroundColor: "rgba(20,20,22,0.94)",
-    borderRadius: "10px",
-    padding: "12px 10px 8px",
-    zIndex: 30,
-    backdropFilter: "blur(12px)",
-    WebkitBackdropFilter: "blur(12px)",
-    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.10),0 8px 24px -8px rgba(0,0,0,0.7)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "6px",
-    minWidth: "40px"
-  };
-}
-function getVolumeVerticalTrackStyle() {
-  return {
-    width: "4px",
-    height: "80px",
-    backgroundColor: "rgba(255,255,255,0.22)",
-    borderRadius: "999px",
     position: "relative",
+    width: "56px",
+    height: "20px",
+    display: "flex",
+    alignItems: "center",
     cursor: "pointer",
-    touchAction: "none"
+    touchAction: "none",
+    flexShrink: 0,
+    marginRight: "4px"
   };
 }
-function getVolumeVerticalFillStyle(volume, accentColor) {
+function getVolumeTrackStyle() {
   return {
     position: "absolute",
     left: 0,
     right: 0,
+    height: "4px",
+    backgroundColor: "rgba(255,255,255,0.24)",
+    borderRadius: "999px",
+    overflow: "hidden"
+  };
+}
+function getVolumeFillStyle(level) {
+  return {
+    position: "absolute",
+    left: 0,
+    top: 0,
     bottom: 0,
-    height: `${volume * 100}%`,
-    backgroundColor: accentColor,
+    width: `${level * 100}%`,
+    backgroundColor: "rgba(255,255,255,0.85)",
     borderRadius: "999px"
   };
 }
-function getVolumeVerticalThumbStyle(volume, accentColor) {
+function getVolumeThumbStyle(level, isActive) {
   return {
     position: "absolute",
-    left: "50%",
-    bottom: `${volume * 100}%`,
-    width: "12px",
-    height: "12px",
+    left: `${level * 100}%`,
+    top: "50%",
+    width: "11px",
+    height: "11px",
     borderRadius: "50%",
-    backgroundColor: accentColor,
-    transform: "translate(-50%, 50%)",
+    backgroundColor: "#fff",
+    transform: `translate(-50%, -50%) scale(${isActive ? 1.18 : 1})`,
+    transition: "transform 0.15s cubic-bezier(0.32, 0.72, 0, 1)",
     boxShadow: "0 1px 3px rgba(0,0,0,0.45)",
-    zIndex: 1,
     pointerEvents: "none"
-  };
-}
-function getVolumeLabelStyle() {
-  return {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: "11px",
-    fontVariantNumeric: "tabular-nums",
-    whiteSpace: "nowrap"
   };
 }
 function getErrorOverlayStyle() {
@@ -892,19 +776,54 @@ function getErrorOverlayStyle() {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: "12px",
+    gap: "14px",
     padding: "24px",
-    backgroundColor: "rgba(0,0,0,0.7)",
-    zIndex: 15
+    backgroundColor: "rgba(9,9,11,0.94)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    zIndex: 25
+  };
+}
+function getErrorTitleStyle() {
+  return {
+    color: "#fff",
+    fontSize: "15px",
+    fontWeight: 550,
+    textAlign: "center",
+    letterSpacing: "-0.01em"
   };
 }
 function getErrorMessageStyle() {
   return {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: "14px",
+    color: "rgba(255,255,255,0.62)",
+    fontSize: "13px",
+    lineHeight: 1.5,
     textAlign: "center",
-    maxWidth: "80%",
-    textWrap: "balance"
+    // 46ch keeps the explanation to two comfortable lines on a wide player
+    maxWidth: "46ch",
+    marginTop: "-6px"
+  };
+}
+function getRetryButtonStyle() {
+  return {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "7px",
+    marginTop: "4px",
+    height: "34px",
+    padding: "0 14px",
+    borderRadius: "9px",
+    border: "none",
+    cursor: "pointer",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.14)",
+    color: "#fff",
+    fontSize: "13px",
+    fontWeight: 500,
+    fontFamily: "inherit",
+    transition: "background-color 0.15s ease-out",
+    touchAction: "manipulation"
   };
 }
 function getLoadingOverlayStyle() {
@@ -1120,7 +1039,7 @@ function injectKeyframes() {
     /* --- Poster play button ------------------------------------------- */
     [data-vplayer-poster-button] {
       transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1),
-                  box-shadow 0.2s ease-out;
+                  background-color 0.2s ease-out;
     }
     [data-vplayer-poster-button]::after {
       content: "";
@@ -1136,7 +1055,8 @@ function injectKeyframes() {
     }
     @media (hover: hover) and (pointer: fine) {
       [data-vplayer-poster-button]:hover {
-        transform: scale(1.06);
+        transform: scale(1.05);
+        background-color: rgba(28,28,34,0.52);
       }
       [data-vplayer-poster-button]:hover::after {
         opacity: 1;
@@ -1148,8 +1068,8 @@ function injectKeyframes() {
     }
 
     /* --- Control buttons ---------------------------------------------- */
-    /* 40px visual box bled out to 44; the 2px per side exactly consumes the
-       4px group gap, so neighbouring targets touch but never overlap. */
+    /* 36\xD740 visual box bled out to 40\xD744; the 2px per side exactly consumes
+       the 4px group gap, so neighbouring targets touch but never overlap. */
     [data-vplayer-btn]::before {
       content: "";
       position: absolute;
@@ -1162,8 +1082,12 @@ function injectKeyframes() {
       [data-vplayer-menu-item]:hover {
         background-color: rgba(255,255,255,0.09);
       }
+      [data-vplayer-retry]:hover {
+        background-color: rgba(255,255,255,0.16);
+      }
     }
-    [data-vplayer-btn]:active {
+    [data-vplayer-btn]:active,
+    [data-vplayer-retry]:active {
       transform: scale(0.96);
     }
 
@@ -1189,7 +1113,8 @@ function injectKeyframes() {
       [data-vplayer-poster-button]:hover,
       [data-vplayer-poster-button]:active,
       [data-vplayer-poster-button]:hover::after,
-      [data-vplayer-btn]:active {
+      [data-vplayer-btn]:active,
+      [data-vplayer-retry]:active {
         transform: none;
       }
     }
@@ -1205,7 +1130,9 @@ var DEFAULT_HIDE_CONTROLS_DELAY = 3e3;
 var HIDE_ON_LEAVE_DELAY = 800;
 var VOLUME_STORAGE_KEY = "vplayer-volume";
 var CAPTION_CONTROLS_GAP = 10;
-var INLINE_LAYOUT_MIN_WIDTH = 480;
+var INLINE_LAYOUT_MIN_WIDTH = 580;
+var VOLUME_SLIDER_MIN_WIDTH = 480;
+var COMPACT_CONTROLS_MAX_WIDTH = 400;
 function getShortcuts(seekStep, volumeStep) {
   return [
     ["Space / K", "Play / Pause"],
@@ -1320,7 +1247,7 @@ var VPlayerBase = forwardRef(function VPlayer({
   const isPlayingRef = useRef(false);
   const hasStartedRef = useRef(false);
   const milestonesFiredRef = useRef(/* @__PURE__ */ new Set());
-  const playlistAdvancingRef = useRef(false);
+  const trackChangeRef = useRef(null);
   const initialTimeAppliedRef = useRef(false);
   const currentChapterRef = useRef(null);
   const readyFiredRef = useRef(false);
@@ -1331,6 +1258,7 @@ var VPlayerBase = forwardRef(function VPlayer({
   const mediaSettingsRef = useRef({ volume: 1, muted: false, rate: 1 });
   const prevPlayingRef = useRef(void 0);
   const controlsBarRef = useRef(null);
+  const volumeBarRef = useRef(null);
   const instanceId = useId();
   const onSeekRef = useRef(onSeek);
   useEffect(() => {
@@ -1390,8 +1318,8 @@ var VPlayerBase = forwardRef(function VPlayer({
     };
   });
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
-  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [showCCMenu, setShowCCMenu] = useState(false);
+  const [isVolumeDragging, setIsVolumeDragging] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [hoverProgress, setHoverProgress] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -1462,7 +1390,6 @@ var VPlayerBase = forwardRef(function VPlayer({
         if (controlsBarRef.current?.contains(document.activeElement)) return;
         setState((s) => ({ ...s, showControls: false }));
         setShowSpeedMenu(false);
-        setShowVolumeSlider(false);
       }, hideControlsDelay);
     }
   }, [forceShowControls, hideControlsDelay]);
@@ -1481,11 +1408,17 @@ var VPlayerBase = forwardRef(function VPlayer({
     };
   }, []);
   useEffect(() => {
+    const change = trackChangeRef.current;
+    trackChangeRef.current = null;
+    const wasPlaying = isPlayingRef.current;
     setState((s) => ({
       ...s,
       currentTime: 0,
       duration: 0,
-      hasStarted: false,
+      // Moving through a playlist must not drop the player back to its poster:
+      // the control bar renders on `hasStarted`, so resetting it mid-playlist
+      // tore the bar down and stranded the viewer on a play button.
+      hasStarted: change !== null,
       isPlaying: false,
       buffered: 0,
       isLoading: false,
@@ -1500,11 +1433,10 @@ var VPlayerBase = forwardRef(function VPlayer({
     prevPlayingRef.current = void 0;
     setActiveTrack(null);
     setEmbedStarted(false);
-    if (playlistAdvancingRef.current) {
-      playlistAdvancingRef.current = false;
+    if (change === "auto" || change === "manual" && wasPlaying) {
       const v = videoRef.current;
       if (v) {
-        setState((s) => ({ ...s, hasStarted: true, isLoading: true }));
+        setState((s) => ({ ...s, isLoading: true }));
         v.play().catch(
           () => setState((s) => ({ ...s, isPlaying: false, isLoading: false }))
         );
@@ -1693,7 +1625,7 @@ var VPlayerBase = forwardRef(function VPlayer({
       dragCleanupRef.current?.();
     };
   }, []);
-  const anyMenuOpen = showSpeedMenu || showCCMenu || showVolumeSlider;
+  const anyMenuOpen = showSpeedMenu || showCCMenu;
   const prevMenuOpenRef = useRef(false);
   useEffect(() => {
     const wasOpen = prevMenuOpenRef.current;
@@ -1840,11 +1772,11 @@ var VPlayerBase = forwardRef(function VPlayer({
       onMilestone(100);
     }
     if (isPlaylist && currentIndex < srcList.length - 1) {
-      playlistAdvancingRef.current = true;
+      trackChangeRef.current = "auto";
       setCurrentIndex((i) => i + 1);
       onNext?.();
     } else if (isPlaylist && loopPlaylist) {
-      playlistAdvancingRef.current = true;
+      trackChangeRef.current = "auto";
       setCurrentIndex(0);
       onNext?.();
     } else {
@@ -2005,10 +1937,30 @@ var VPlayerBase = forwardRef(function VPlayer({
       onVolumeChange?.(0, true);
     }
   }, [state.volume, onVolumeChange]);
-  const handleVolumeSliderClick = useCallback(
+  const handleVolumePointerDown = useCallback(
     (e) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      setVolumeLevel((rect.bottom - e.clientY) / rect.height);
+      const bar = volumeBarRef.current;
+      if (!bar) return;
+      e.preventDefault();
+      const apply = (clientX) => {
+        const rect = bar.getBoundingClientRect();
+        if (rect.width === 0) return;
+        setVolumeLevel((clientX - rect.left) / rect.width);
+      };
+      apply(e.clientX);
+      setIsVolumeDragging(true);
+      bar.setPointerCapture?.(e.pointerId);
+      const onMove = (ev) => apply(ev.clientX);
+      const onUp = (ev) => {
+        setIsVolumeDragging(false);
+        bar.releasePointerCapture?.(ev.pointerId);
+        bar.removeEventListener("pointermove", onMove);
+        bar.removeEventListener("pointerup", onUp);
+        bar.removeEventListener("pointercancel", onUp);
+      };
+      bar.addEventListener("pointermove", onMove);
+      bar.addEventListener("pointerup", onUp);
+      bar.addEventListener("pointercancel", onUp);
     },
     [setVolumeLevel]
   );
@@ -2132,7 +2084,6 @@ var VPlayerBase = forwardRef(function VPlayer({
         setShowShortcuts(false);
         setShowSpeedMenu(false);
         setShowCCMenu(false);
-        setShowVolumeSlider(false);
       } else if (/^[0-9]$/.test(e.key)) {
         e.preventDefault();
         if (isFinite(v.duration)) {
@@ -2231,7 +2182,6 @@ var VPlayerBase = forwardRef(function VPlayer({
       hideTimerRef.current = setTimeout(() => {
         setState((s) => ({ ...s, showControls: false }));
         setShowSpeedMenu(false);
-        setShowVolumeSlider(false);
       }, HIDE_ON_LEAVE_DELAY);
     }
     setHoverProgress(null);
@@ -2247,9 +2197,40 @@ var VPlayerBase = forwardRef(function VPlayer({
   const posterUrl = poster || DEFAULT_POSTER;
   const showPoster = !state.hasStarted;
   const hlsError = !!parsed.isHls && hlsUnsupported;
-  const controlsVisible = forceShowControls || state.showControls || !state.isPlaying || isDragging || showSpeedMenu || showCCMenu;
+  const hasError = !!state.error || hlsError || !hasSource;
+  const errorCopy = !hasError ? null : !hasSource ? {
+    title: "No video to play",
+    detail: "This player was rendered without a source.",
+    canRetry: false
+  } : hlsError ? {
+    title: "This browser can\u2019t play HLS",
+    detail: "Live and adaptive streams need Safari, iOS, or a browser with native HLS support.",
+    canRetry: false
+  } : state.error?.code === 2 ? {
+    title: "The connection dropped",
+    detail: "Loading stopped partway through. Check your connection and try again.",
+    canRetry: true
+  } : state.error?.code === 3 ? {
+    title: "This video couldn\u2019t be decoded",
+    detail: "The file may be damaged, or it uses a codec this browser doesn\u2019t support.",
+    canRetry: true
+  } : {
+    title: "This video couldn\u2019t be loaded",
+    detail: "The file may be missing, blocked by the server, or in a format this browser can\u2019t play.",
+    canRetry: true
+  };
+  const retryPlayback = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    setState((st) => ({ ...st, error: null, isLoading: true }));
+    v.load();
+    v.play().catch(() => setState((st) => ({ ...st, isPlaying: false, isLoading: false })));
+  }, []);
+  const controlsVisible = forceShowControls || state.showControls || !state.isPlaying || isDragging || showSpeedMenu || showCCMenu || isVolumeDragging;
   const layoutVariant = controlsVariant !== "classic" && metrics.width < INLINE_LAYOUT_MIN_WIDTH ? "classic" : controlsVariant;
   const inlineLayout = layoutVariant !== "classic";
+  const showVolumeSlider = metrics.width >= VOLUME_SLIDER_MIN_WIDTH;
+  const compactControls = metrics.width > 0 && metrics.width < COMPACT_CONTROLS_MAX_WIDTH;
   const captionFontSize = getCaptionFontSize(metrics.box?.height ?? 0);
   const topCues = activeCues.filter((c) => c.region === "top");
   const bottomCues = activeCues.filter((c) => c.region === "bottom");
@@ -2305,11 +2286,12 @@ var VPlayerBase = forwardRef(function VPlayer({
         "data-vplayer-btn": "",
         style: buttonStyle,
         onClick: () => {
+          trackChangeRef.current = "manual";
           setCurrentIndex((i) => i - 1);
           onPrev?.();
         },
         "aria-label": "Previous video",
-        children: /* @__PURE__ */ jsx2(PrevIcon, { size: 18, color: iconColor })
+        children: /* @__PURE__ */ jsx2(PrevIcon, { size: 20, color: iconColor })
       }
     ),
     currentIndex < srcList.length - 1 && /* @__PURE__ */ jsx2(
@@ -2319,78 +2301,49 @@ var VPlayerBase = forwardRef(function VPlayer({
         "data-vplayer-btn": "",
         style: buttonStyle,
         onClick: () => {
+          trackChangeRef.current = "manual";
           setCurrentIndex((i) => i + 1);
           onNext?.();
         },
         "aria-label": "Next video",
-        children: /* @__PURE__ */ jsx2(NextIcon, { size: 18, color: iconColor })
+        children: /* @__PURE__ */ jsx2(NextIcon, { size: 20, color: iconColor })
       }
     )
   ] }) : null;
-  const volumeControl = /* @__PURE__ */ jsxs2(
-    "div",
-    {
-      style: getVolumeSliderContainerStyle(),
-      onMouseEnter: () => setShowVolumeSlider(true),
-      onMouseLeave: () => setShowVolumeSlider(false),
-      onFocus: () => setShowVolumeSlider(true),
-      onBlur: (e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) {
-          setShowVolumeSlider(false);
-        }
-      },
-      children: [
-        /* @__PURE__ */ jsx2(
-          "button",
-          {
-            type: "button",
-            "data-vplayer-btn": "",
-            style: buttonStyle,
-            onClick: toggleMute,
-            "aria-label": state.isMuted ? "Unmute" : "Mute",
-            children: /* @__PURE__ */ jsx2(VolumeIcon, { size: 20, color: iconColor })
-          }
-        ),
-        showVolumeSlider && /* @__PURE__ */ jsxs2("div", { style: getVolumePopupStyle(), children: [
-          /* @__PURE__ */ jsxs2(
-            "div",
-            {
-              style: getVolumeVerticalTrackStyle(),
-              onClick: handleVolumeSliderClick,
-              onKeyDown: handleVolumeKeyDown,
-              role: "slider",
-              "aria-label": "Volume",
-              "aria-valuemin": 0,
-              "aria-valuemax": 100,
-              "aria-valuenow": Math.round((state.isMuted ? 0 : state.volume) * 100),
-              tabIndex: 0,
-              children: [
-                /* @__PURE__ */ jsx2(
-                  "div",
-                  {
-                    style: getVolumeVerticalFillStyle(
-                      state.isMuted ? 0 : state.volume,
-                      accentColor
-                    )
-                  }
-                ),
-                /* @__PURE__ */ jsx2(
-                  "div",
-                  {
-                    style: getVolumeVerticalThumbStyle(
-                      state.isMuted ? 0 : state.volume,
-                      accentColor
-                    )
-                  }
-                )
-              ]
-            }
-          ),
-          /* @__PURE__ */ jsx2("span", { style: getVolumeLabelStyle(), children: state.isMuted ? "0%" : `${Math.round(state.volume * 100)}%` })
-        ] })
-      ]
-    }
-  );
+  const volumeLevel = state.isMuted ? 0 : state.volume;
+  const volumeControl = /* @__PURE__ */ jsxs2("div", { style: getVolumeSliderContainerStyle(), children: [
+    /* @__PURE__ */ jsx2(
+      "button",
+      {
+        type: "button",
+        "data-vplayer-btn": "",
+        style: buttonStyle,
+        onClick: toggleMute,
+        "aria-label": state.isMuted ? "Unmute" : "Mute",
+        children: /* @__PURE__ */ jsx2(VolumeIcon, { size: 20, color: iconColor })
+      }
+    ),
+    showVolumeSlider && /* @__PURE__ */ jsxs2(
+      "div",
+      {
+        ref: volumeBarRef,
+        style: getVolumeSliderStyle(),
+        onPointerDown: handleVolumePointerDown,
+        onKeyDown: handleVolumeKeyDown,
+        role: "slider",
+        "aria-label": "Volume",
+        "aria-valuemin": 0,
+        "aria-valuemax": 100,
+        "aria-valuenow": Math.round(volumeLevel * 100),
+        "aria-valuetext": `${Math.round(volumeLevel * 100)}% volume`,
+        tabIndex: 0,
+        children: [
+          /* @__PURE__ */ jsx2("div", { style: getVolumeTrackStyle(), children: /* @__PURE__ */ jsx2("div", { style: getVolumeFillStyle(volumeLevel) }) }),
+          /* @__PURE__ */ jsx2("div", { style: getVolumeThumbStyle(volumeLevel, isVolumeDragging) })
+        ]
+      }
+    )
+  ] });
   const progressBar = /* @__PURE__ */ jsxs2(
     "div",
     {
@@ -2466,7 +2419,7 @@ var VPlayerBase = forwardRef(function VPlayer({
         children: /* @__PURE__ */ jsx2(
           CCIcon,
           {
-            size: 18,
+            size: 20,
             color: activeTrack !== null ? accentColor : iconColor
           }
         )
@@ -2477,22 +2430,17 @@ var VPlayerBase = forwardRef(function VPlayer({
       {
         type: "button",
         "data-vplayer-btn": "",
-        style: {
-          ...buttonStyle,
-          fontSize: "12px",
-          fontWeight: 600,
-          fontVariantNumeric: "tabular-nums"
-        },
+        style: getSpeedButtonStyle(layoutVariant, state.playbackRate === 1),
         onClick: () => setShowSpeedMenu(!showSpeedMenu),
-        "aria-label": "Playback speed",
+        "aria-label": `Playback speed: ${state.playbackRate}\xD7`,
         "aria-expanded": showSpeedMenu,
-        children: state.playbackRate === 1 ? /* @__PURE__ */ jsx2(SettingsIcon, { size: 18, color: iconColor }) : /* @__PURE__ */ jsxs2("span", { style: { color: accentColor }, children: [
+        children: /* @__PURE__ */ jsxs2("span", { style: state.playbackRate === 1 ? void 0 : { color: accentColor }, children: [
           state.playbackRate,
           "\xD7"
         ] })
       }
     ),
-    supportsPip && !disablePictureInPicture && /* @__PURE__ */ jsx2(
+    supportsPip && !disablePictureInPicture && !compactControls && /* @__PURE__ */ jsx2(
       "button",
       {
         type: "button",
@@ -2500,7 +2448,7 @@ var VPlayerBase = forwardRef(function VPlayer({
         style: buttonStyle,
         onClick: togglePip,
         "aria-label": "Picture in picture",
-        children: /* @__PURE__ */ jsx2(PipIcon, { size: 18, color: iconColor })
+        children: /* @__PURE__ */ jsx2(PipIcon, { size: 20, color: iconColor })
       }
     ),
     /* @__PURE__ */ jsx2(
@@ -2511,7 +2459,7 @@ var VPlayerBase = forwardRef(function VPlayer({
         style: buttonStyle,
         onClick: toggleFullscreen,
         "aria-label": state.isFullscreen ? "Exit fullscreen" : "Enter fullscreen",
-        children: state.isFullscreen ? /* @__PURE__ */ jsx2(ExitFullscreenIcon, { size: 18, color: iconColor }) : /* @__PURE__ */ jsx2(FullscreenIcon, { size: 18, color: iconColor })
+        children: state.isFullscreen ? /* @__PURE__ */ jsx2(ExitFullscreenIcon, { size: 20, color: iconColor }) : /* @__PURE__ */ jsx2(FullscreenIcon, { size: 20, color: iconColor })
       }
     )
   ] });
@@ -2629,8 +2577,9 @@ var VPlayerBase = forwardRef(function VPlayer({
                   {
                     type: "button",
                     "data-vplayer-poster-button": "",
-                    style: getPlayButtonLargeStyle(accentColor),
-                    tabIndex: showPoster ? 0 : -1,
+                    style: getPlayButtonLargeStyle(),
+                    tabIndex: showPoster && !hasError ? 0 : -1,
+                    hidden: hasError,
                     "aria-label": "Play video",
                     children: /* @__PURE__ */ jsx2(
                       PlayIcon,
@@ -2638,9 +2587,9 @@ var VPlayerBase = forwardRef(function VPlayer({
                         size: 30,
                         color: iconColor,
                         style: {
-                          width: "42%",
-                          height: "42%",
-                          transform: "translateX(4%)"
+                          width: "40%",
+                          height: "40%",
+                          transform: "translateX(3%)"
                         }
                       }
                     )
@@ -2649,10 +2598,24 @@ var VPlayerBase = forwardRef(function VPlayer({
               ]
             }
           ),
-          state.isLoading && state.hasStarted && !state.error && /* @__PURE__ */ jsx2("div", { style: getLoadingOverlayStyle(), children: /* @__PURE__ */ jsx2(SpinnerIcon, { size: 40, color: iconColor }) }),
-          (state.error || hlsError || !hasSource) && /* @__PURE__ */ jsxs2("div", { style: getErrorOverlayStyle(), children: [
-            /* @__PURE__ */ jsx2(ErrorIcon, { size: 40, color: iconColor }),
-            /* @__PURE__ */ jsx2("span", { style: getErrorMessageStyle(), children: !hasSource ? "No video source provided" : hlsError ? "HLS playback is not supported in this browser" : state.error?.code === 4 ? "This video format is not supported" : "Video could not be loaded" })
+          state.isLoading && state.hasStarted && !state.error && /* @__PURE__ */ jsx2("div", { style: getLoadingOverlayStyle(), children: /* @__PURE__ */ jsx2(SpinnerIcon, { size: 36, color: iconColor }) }),
+          errorCopy && /* @__PURE__ */ jsxs2("div", { style: getErrorOverlayStyle(), role: "alert", children: [
+            /* @__PURE__ */ jsx2(ErrorIcon, { size: 30, color: "rgba(255,255,255,0.55)" }),
+            /* @__PURE__ */ jsx2("span", { style: getErrorTitleStyle(), children: errorCopy.title }),
+            /* @__PURE__ */ jsx2("span", { style: getErrorMessageStyle(), children: errorCopy.detail }),
+            errorCopy.canRetry && /* @__PURE__ */ jsxs2(
+              "button",
+              {
+                type: "button",
+                "data-vplayer-retry": "",
+                style: getRetryButtonStyle(),
+                onClick: retryPlayback,
+                children: [
+                  /* @__PURE__ */ jsx2(RetryIcon, { size: 15, color: "currentColor" }),
+                  "Try again"
+                ]
+              }
+            )
           ] }),
           title && state.hasStarted && controlsVisible && /* @__PURE__ */ jsx2("div", { style: getTitleOverlayStyle(), children: title }),
           showShortcuts && /* @__PURE__ */ jsx2(
@@ -2779,14 +2742,20 @@ var VPlayerBase = forwardRef(function VPlayer({
             "div",
             {
               ref: controlsBarRef,
-              style: getControlsBarStyle(controlsVisible, layoutVariant),
+              style: getControlsBarStyle(
+                controlsVisible,
+                layoutVariant,
+                compactControls
+              ),
               onFocus: resetHideTimer,
               children: /* @__PURE__ */ jsx2("div", { style: getControlsShellStyle(layoutVariant), children: inlineLayout ? (
                 // One row: the scrubber stretches between the two readouts.
                 /* @__PURE__ */ jsxs2("div", { style: getInlineRowStyle(), children: [
-                  playButton,
-                  playlistButtons,
-                  volumeControl,
+                  /* @__PURE__ */ jsxs2("div", { style: getControlGroupStyle(), children: [
+                    playButton,
+                    playlistButtons,
+                    volumeControl
+                  ] }),
                   /* @__PURE__ */ jsx2("span", { style: timeStyle, children: formatTime(state.currentTime) }),
                   progressBar,
                   /* @__PURE__ */ jsx2("span", { style: timeStyle, children: layoutVariant === "minimal" ? `\u2212${formatTime(remainingTime)}` : formatTime(state.duration) }),
@@ -2803,8 +2772,10 @@ var VPlayerBase = forwardRef(function VPlayer({
                       volumeControl,
                       /* @__PURE__ */ jsxs2("span", { style: timeStyle, children: [
                         formatTime(state.currentTime),
-                        " / ",
-                        formatTime(state.duration)
+                        !compactControls && /* @__PURE__ */ jsxs2(Fragment2, { children: [
+                          " / ",
+                          formatTime(state.duration)
+                        ] })
                       ] })
                     ] }),
                     rightGroup
