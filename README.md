@@ -5,8 +5,8 @@ A lightweight, dependency-free, production-ready video player for React. Support
 > **Using a coding agent?** [`AGENTS.md`](./AGENTS.md) is a condensed
 > integration guide — the whole API in one screen, plus the mistakes worth
 > avoiding. There is also a markdown mirror of the docs site at
-> [`/llms.txt`](https://vplayer-nu.vercel.app/llms.txt) and
-> [`/llms-full.txt`](https://vplayer-nu.vercel.app/llms-full.txt).
+> [`/llms.txt`](https://vplayer.hovr.dev/llms.txt) and
+> [`/llms-full.txt`](https://vplayer.hovr.dev/llms-full.txt).
 
 ---
 

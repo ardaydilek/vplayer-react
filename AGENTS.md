@@ -82,5 +82,8 @@ Browsers block autoplay with sound. Use `autoPlay muted playsInline` semantics â
 
 ## Full reference
 
-`README.md` in this repository has the complete prop table, callback list and
-type shapes. https://github.com/ardaydilek/vplayer-react#readme
+- `README.md` in this repository: the complete prop table, callback list and
+  type shapes â€” https://github.com/ardaydilek/vplayer-react#readme
+- Markdown mirror of the docs site, built for exactly this:
+  https://vplayer.hovr.dev/llms-full.txt
+- Live demo of every control skin: https://vplayer.hovr.dev
